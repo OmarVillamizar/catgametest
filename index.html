@@ -20,10 +20,77 @@ canvas {
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="debug" style="position:fixed;top:0;left:0;color:#0f0;font:10px monospace;background:rgba(0,0,0,0.7);padding:4px 8px;z-index:999;pointer-events:none;max-height:200px;overflow:hidden;"></div>
+<pre id="debug" style="display:none;position:fixed;top:0;left:0;color:#0f0;font:10px monospace;background:rgba(0,0,0,0.7);padding:4px 8px;z-index:999;pointer-events:none;">loading...</pre>
 <script>
 (function() {
   'use strict';
+
+  var DEBUG = location.search.includes('debug');
+  var drawLog = [];
+  var lastFrameDrawLog = [];
+  var frameCount = 0;
+
+  function logDraw(part, data) {
+    if (!DEBUG) return;
+    drawLog.push({ part: part, x: data.x, y: data.y, w: data.w, h: data.h, color: data.color, extra: data.extra });
+  }
+
+  // HandleIntent: same logic as keydown, callable from puppeteer
+  function handleIntent(intent) {
+    switch (intent) {
+      case 'start': anyKey = true; break;
+      case 'jump': jumpKey = true; anyKey = true; break;
+      case 'duck': duckKey = true; anyKey = true; break;
+      case 'releaseJump': jumpKey = false; break;
+      case 'releaseDuck': duckKey = false; break;
+      case 'pause': gameState = gameState === 'PLAYING' ? 'PAUSED' : (gameState === 'PAUSED' ? 'PLAYING' : gameState); break;
+      case 'restart': gameState = 'READY'; Game.resetAll(); break;
+    }
+  }
+
+  // Step one game tick (used by puppeteer tick(n))
+  function stepFrame() {
+    var dt = FIXED_DT;
+    transition();
+    if (gameState === 'PLAYING') {
+      Input.poll();
+      Player.update(dt);
+      ObstacleManager.update(dt);
+      Background.update(dt);
+      score += gameSpeed * dt / 10;
+      if (invulnTimer > 0) { invulnTimer -= dt; if (invulnTimer < 0) invulnTimer = 0; }
+      if (stumbleTimer > 0) stumbleTimer--;
+      checkCollisions();
+    }
+  }
+
+  // Expose debug API
+  if (DEBUG) {
+    window.__game = {
+      snap: function() {
+        var obs = ObstacleManager.getActive().map(function(o) {
+          var hb = ObstacleManager.getHitbox(o);
+          return { type: OBSTACLES[o.type].name, x: o.x, hb: hb };
+        });
+        return {
+          state: gameState, catY: catY, onGround: catOnGround, ducking: catDucking,
+          hitbox: Player.getHitbox(),
+          obstacles: obs,
+          dog: { x: dogX, state: dogState },
+          speed: gameSpeed, score: Math.floor(score), frame: frameCount,
+          damageCount: damageCount, invulnTimer: invulnTimer,
+          windowOffset: windowOffset,
+          drawLog: lastFrameDrawLog.slice()
+        };
+      },
+      input: function(intent) { handleIntent(intent); },
+      tick: function(n) {
+        n = n || 1;
+        for (var i = 0; i < n; i++) { stepFrame(); }
+      },
+      reset: function() { Game.resetAll(); }
+    };
+  }
 
   var canvas = document.getElementById('game');
   var ctx = canvas.getContext('2d');
@@ -156,6 +223,7 @@ canvas {
       // Wall
       ctx.fillStyle = C.wall;
       ctx.fillRect(0, 0, W, 232);
+      logDraw('bg-wall', {x:0, y:0, w:W, h:232, color:C.wall});
       // Dot pattern
       ctx.fillStyle = C.wallPattern;
       for (var x = 20; x < W; x += 40) {
@@ -170,6 +238,7 @@ canvas {
       // Baseboard
       ctx.fillStyle = C.baseboard;
       ctx.fillRect(0, 232, W, 8);
+      logDraw('bg-baseboard', {x:0, y:232, w:W, h:8, color:C.baseboard});
       // Floor planks (parallax scroll)
       for (var seg = -1; seg <= 1; seg++) {
         var segX = seg * SEGMENT_W - floorOffset;
@@ -258,15 +327,18 @@ canvas {
       ctx.moveTo(fx - 16, fy - 28);
       ctx.bezierCurveTo(fx - 50, fy - 50, fx - 50, fy - 85, fx - 30, fy - 75);
       ctx.stroke();
+      logDraw('cat-tail', {x:fx-35, y:fy-65, w:0, h:0, color:C.catBody});
 
       ctx.fillStyle = C.catLeg;
       ctx.fillRect(fx + 2,  fy - 22 + legOff, 6, 22);
       ctx.fillRect(fx + 10, fy - 24 - legOff, 6, 24);
+      logDraw('cat-leg', {x:fx+6, y:fy-16+legOff, w:12, h:24, color:C.catLeg});
 
       ctx.fillStyle = C.catBody;
       ctx.beginPath();
       ctx.ellipse(fx, fy - 30, 18, 16, 0, 0, Math.PI * 2);
       ctx.fill();
+      logDraw('cat-body', {x:fx-18, y:fy-46, w:36, h:32, color:C.catBody});
       ctx.fillStyle = C.catBelly;
       ctx.beginPath();
       ctx.ellipse(fx + 2, fy - 27, 10, 10, 0, 0, Math.PI * 2);
@@ -281,6 +353,7 @@ canvas {
       ctx.beginPath();
       ctx.arc(fx + 4, hcy, 13, 0, Math.PI * 2);
       ctx.fill();
+      logDraw('cat-head', {x:fx-9, y:hcy-13, w:26, h:26, color:C.catBody});
 
       ctx.fillStyle = C.catBody;
       ctx.beginPath();
@@ -339,15 +412,18 @@ canvas {
         ctx.moveTo(fx - 16, fy - 20);
         ctx.bezierCurveTo(fx - 45, fy - 28, fx - 40, fy - 18, fx - 28, fy - 22);
         ctx.stroke();
+        logDraw('cat-tail', {x:fx-35, y:fy-24, w:0, h:0, color:C.catBody});
         // Back legs (tucked)
         ctx.fillStyle = C.catLeg;
         ctx.fillRect(fx + 3,  fy - 14, 5, 14);
         ctx.fillRect(fx + 10, fy - 12, 5, 12);
+        logDraw('cat-leg', {x:fx+6, y:fy-14, w:12, h:14, color:C.catLeg});
         // Compressed body
         ctx.fillStyle = C.catBody;
         ctx.beginPath();
         ctx.ellipse(fx, fy - 22, 20, 10, 0, 0, Math.PI * 2);
         ctx.fill();
+        logDraw('cat-body', {x:fx-20, y:fy-32, w:40, h:20, color:C.catBody});
         ctx.fillStyle = C.catBelly;
         ctx.beginPath();
         ctx.ellipse(fx + 2, fy - 20, 11, 7, 0, 0, Math.PI * 2);
@@ -362,6 +438,7 @@ canvas {
         ctx.beginPath();
         ctx.arc(fx + 4, dhcy, 11, 0, Math.PI * 2);
         ctx.fill();
+        logDraw('cat-head', {x:fx-7, y:dhcy-11, w:22, h:22, color:C.catBody});
         // Ears (flattened back)
         ctx.fillStyle = C.catBody;
         ctx.beginPath();
@@ -379,6 +456,7 @@ canvas {
         ctx.beginPath();
         ctx.moveTo(fx + 5, dhcy - 7); ctx.lineTo(fx + 10, dhcy - 14); ctx.lineTo(fx + 11, dhcy - 6);
         ctx.fill();
+        logDraw('cat-ear', {x:fx-8, y:dhcy-14, w:20, h:14, color:C.catBody});
         // Eyes lowered
         ctx.fillStyle = C.catEye;
         ctx.beginPath();
@@ -395,6 +473,7 @@ canvas {
         ctx.beginPath();
         ctx.moveTo(fx + 4, dhcy - 1); ctx.lineTo(fx + 8, dhcy - 1); ctx.lineTo(fx + 6, dhcy + 2);
         ctx.fill();
+        logDraw('cat-nose', {x:fx+4, y:dhcy-1, w:4, h:3, color:C.catNose, extra:'duck'});
         // Whiskers (shorter, stressed)
         ctx.strokeStyle = C.catEye; ctx.lineWidth = 1;
         ctx.beginPath();
@@ -403,6 +482,7 @@ canvas {
         ctx.moveTo(fx + 13, dhcy - 2); ctx.lineTo(fx + 24, dhcy - 3);
         ctx.moveTo(fx + 13, dhcy); ctx.lineTo(fx + 24, dhcy);
         ctx.stroke();
+        logDraw('cat-whisker', {x:fx-18, y:dhcy-2, w:42, h:3, color:C.catEye, extra:'duck'});
       }
 
       ctx.restore();
@@ -489,6 +569,7 @@ canvas {
         var def = OBSTACLES[obs.type];
         var y = def.short ? 200 : GROUND_Y;
         def.draw(ctx, obs.x, y);
+        logDraw('obs-' + def.name, {x:obs.x, y:y - def.h, w:def.w, h:def.h});
         // Debug hitbox (uncomment to visualize):
         // var hb = getHitbox(obs);
         // ctx.strokeStyle='red'; ctx.strokeRect(hb.x,hb.y,hb.w,hb.h);
@@ -546,17 +627,20 @@ canvas {
       ctx.moveTo(-18, -28);
       ctx.bezierCurveTo(-35, -38, -38, -55, -30, -60);
       ctx.stroke();
+      logDraw('dog-tail', {x:dx-35, y:dy-50, w:0, h:0, color:C.dogDark});
 
       // Back legs
       ctx.fillStyle = C.dogDark;
       ctx.fillRect(-14, -14 + legPhase, 7, 16);
       ctx.fillRect(-4, -16 - legPhase, 7, 18);
+      logDraw('dog-leg', {x:dx-14, y:dy-14+legPhase, w:28, h:18, color:C.dogDark});
 
       // Body (larger than cat: 28×20 vs cat's 18×16)
       ctx.fillStyle = C.dogBody;
       ctx.beginPath();
       ctx.ellipse(0, -28, 28, 20, 0, 0, Math.PI * 2);
       ctx.fill();
+      logDraw('dog-body', {x:dx-28, y:dy-48, w:56, h:40, color:C.dogBody});
       // Belly
       ctx.fillStyle = C.dogDark;
       ctx.beginPath();
@@ -573,6 +657,7 @@ canvas {
       ctx.beginPath();
       ctx.arc(24, -44, 16, 0, Math.PI * 2);
       ctx.fill();
+      logDraw('dog-head', {x:dx+8, y:dy-60, w:32, h:32, color:C.dogBody});
 
       // Floppy ears
       ctx.fillStyle = C.dogDark;
@@ -707,6 +792,7 @@ canvas {
       canvas.addEventListener('touchstart', onTouchStart, { passive: false });
       canvas.addEventListener('touchend', onTouchEnd, { passive: false });
       canvas.addEventListener('touchcancel', onTouchEnd);
+      canvas.addEventListener('click', function() { anyKey = true; });
     }
 
     return { init: init, poll: poll, consumeAnyKey: consumeAnyKey, consumePause: consumePause, consumeRestart: consumeRestart };
@@ -879,6 +965,7 @@ canvas {
       }
 
       ctx.clearRect(0, 0, W, H);
+      if (DEBUG) { drawLog = []; }
       Background.render(ctx);
 
       if (gameState === 'PLAYING' || gameState === 'GAME_OVER') {
@@ -929,13 +1016,18 @@ canvas {
         renderIntroScene(ctx);
       }
 
+      // Capture draw log for debug
+      if (DEBUG) { lastFrameDrawLog = drawLog.slice(); frameCount++; }
+
       // HUD and overlays
       renderHUD(ctx);
       renderStateOverlay(ctx);
 
-      // Debug overlay (DOM, visible in browser snapshot)
-      var dbg = document.getElementById('debug');
-      dbg.textContent = 'state:' + gameState +
+      // Debug overlay (DOM, visible in browser snapshot — only in debug mode)
+      if (DEBUG) {
+        var dbg = document.getElementById('debug');
+        dbg.style.display = 'block';
+      dbg.innerText = 'state:' + gameState +
         ' | obs:' + ObstacleManager.getActive().length +
         ' | catY:' + catY.toFixed(1) +
         ' | duck:' + catDucking +
