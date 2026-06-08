@@ -103,9 +103,10 @@ canvas {
   };
 
   // ÔöÇÔöÇ Shared State ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
-  var gameState    = 'READY';       // READY | PLAYING | GAME_OVER
+  var gameState    = 'READY';       // READY | PLAYING | PAUSED | GAME_OVER
   var gameSpeed    = BASE_SPEED;
   var floorOffset  = 0;
+  var windowOffset = 0;
   var elapsedTime  = 0;            // ms, for speed ramp
   var damageCount  = 0;            // 0-3
   var invulnTimer  = 0;            // ms remaining
@@ -147,6 +148,7 @@ canvas {
     function update(dt) {
       if (gameState !== 'PLAYING') return;
       floorOffset = (floorOffset + gameSpeed * 0.6 * dt / FIXED_DT) % SEGMENT_W;
+      windowOffset = (windowOffset + gameSpeed * 0.15 * dt / FIXED_DT) % 100;
     }
 
     function render(ctx) {
@@ -160,18 +162,10 @@ canvas {
           ctx.fillRect(x, y, 2, 2);
         }
       }
-      // Window
-      var wx = 620, wy = 60, ww = 100, wh = 130;
-      ctx.fillStyle = C.windowFrame;
-      ctx.fillRect(wx, wy, ww, wh);
-      ctx.fillStyle = C.windowGlass;
-      ctx.fillRect(wx + 8, wy + 8, ww - 16, wh - 16);
-      ctx.strokeStyle = C.windowFrame;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(wx + ww / 2, wy + 8); ctx.lineTo(wx + ww / 2, wy + wh - 8);
-      ctx.moveTo(wx + 8, wy + wh / 2); ctx.lineTo(wx + ww - 8, wy + wh / 2);
-      ctx.stroke();
+      // Window (parallax scroll at 0.15x)
+      var wx = 620 - windowOffset, wy = 60, ww = 100, wh = 130;
+      drawWindow(ctx, wx, wy, ww, wh);
+      drawWindow(ctx, wx + 900, wy, ww, wh);
       // Baseboard
       ctx.fillStyle = C.baseboard;
       ctx.fillRect(0, 232, W, 8);
@@ -191,6 +185,20 @@ canvas {
 
     function reset() {
       floorOffset = 0;
+      windowOffset = 0;
+    }
+
+    function drawWindow(ctx, wx, wy, ww, wh) {
+      ctx.fillStyle = C.windowFrame;
+      ctx.fillRect(wx, wy, ww, wh);
+      ctx.fillStyle = C.windowGlass;
+      ctx.fillRect(wx + 8, wy + 8, ww - 16, wh - 16);
+      ctx.strokeStyle = C.windowFrame;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(wx + ww / 2, wy + 8); ctx.lineTo(wx + ww / 2, wy + wh - 8);
+      ctx.moveTo(wx + 8, wy + wh / 2); ctx.lineTo(wx + ww - 8, wy + wh / 2);
+      ctx.stroke();
     }
 
     return { update: update, render: render, reset: reset };
@@ -242,43 +250,37 @@ canvas {
       var fy = catY;                    // feet Y
       var legOff = catOnGround && !catDucking ? LEG_OFFSETS[runFrame] : 0;
 
-      // ÔöÇÔöÇ Tail ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+      // Draw normal running/jumping cat (skip when ducking)
+      if (!(catDucking && catOnGround)) {
       ctx.strokeStyle = C.catBody; ctx.lineWidth = 5; ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(fx - 16, fy - 28);
       ctx.bezierCurveTo(fx - 50, fy - 50, fx - 50, fy - 85, fx - 30, fy - 75);
       ctx.stroke();
 
-      // ÔöÇÔöÇ Back legs ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       ctx.fillStyle = C.catLeg;
       ctx.fillRect(fx + 2,  fy - 22 + legOff, 6, 22);
       ctx.fillRect(fx + 10, fy - 24 - legOff, 6, 24);
 
-      // ÔöÇÔöÇ Body ellipse ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       ctx.fillStyle = C.catBody;
       ctx.beginPath();
       ctx.ellipse(fx, fy - 30, 18, 16, 0, 0, Math.PI * 2);
       ctx.fill();
-      // Belly
       ctx.fillStyle = C.catBelly;
       ctx.beginPath();
       ctx.ellipse(fx + 2, fy - 27, 10, 10, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // ÔöÇÔöÇ Front legs ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       ctx.fillStyle = C.catLeg;
       ctx.fillRect(fx - 16, fy - 24 + legOff, 6, 24);
       ctx.fillRect(fx - 6,  fy - 26 - legOff, 6, 26);
 
-      // ÔöÇÔöÇ Head ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       var hcy = fy - 55;
       ctx.fillStyle = C.catBody;
       ctx.beginPath();
       ctx.arc(fx + 4, hcy, 13, 0, Math.PI * 2);
       ctx.fill();
 
-      // ÔöÇÔöÇ Ears ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
-      // Left ear
       ctx.fillStyle = C.catBody;
       ctx.beginPath();
       ctx.moveTo(fx - 6, hcy - 8); ctx.lineTo(fx - 12, hcy - 26); ctx.lineTo(fx + 2, hcy - 8);
@@ -287,7 +289,6 @@ canvas {
       ctx.beginPath();
       ctx.moveTo(fx - 4, hcy - 9); ctx.lineTo(fx - 9, hcy - 22); ctx.lineTo(fx, hcy - 9);
       ctx.fill();
-      // Right ear
       ctx.fillStyle = C.catBody;
       ctx.beginPath();
       ctx.moveTo(fx + 4, hcy - 10); ctx.lineTo(fx + 10, hcy - 28); ctx.lineTo(fx + 14, hcy - 8);
@@ -297,7 +298,6 @@ canvas {
       ctx.moveTo(fx + 6, hcy - 10); ctx.lineTo(fx + 10, hcy - 24); ctx.lineTo(fx + 12, hcy - 9);
       ctx.fill();
 
-      // ÔöÇÔöÇ Eyes ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       ctx.fillStyle = C.catEye;
       ctx.beginPath();
       ctx.arc(fx - 2, hcy - 4, 2.5, 0, Math.PI * 2);
@@ -309,13 +309,11 @@ canvas {
       ctx.arc(fx + 13, hcy - 5, 1, 0, Math.PI * 2);
       ctx.fill();
 
-      // ÔöÇÔöÇ Nose ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       ctx.fillStyle = C.catNose;
       ctx.beginPath();
       ctx.moveTo(fx + 4, hcy - 1); ctx.lineTo(fx + 8, hcy - 1); ctx.lineTo(fx + 6, hcy + 2);
       ctx.fill();
 
-      // ÔöÇÔöÇ Whiskers ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       ctx.strokeStyle = C.catEye; ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(fx - 8, hcy - 1); ctx.lineTo(fx - 22, hcy - 3);
@@ -324,7 +322,6 @@ canvas {
       ctx.moveTo(fx + 14, hcy); ctx.lineTo(fx + 28, hcy);
       ctx.stroke();
 
-      // ÔöÇÔöÇ Jump pose: ears flatten ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       if (!catOnGround) {
         ctx.fillStyle = C.catBody;
         ctx.beginPath();
@@ -332,8 +329,8 @@ canvas {
         ctx.arc(fx + 14, hcy - 12, 4, 0, Math.PI * 2);
         ctx.fill();
       }
+      } // end normal cat drawing
 
-      // ÔöÇÔöÇ Duck pose: compressed body ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       if (catDucking && catOnGround) {
         ctx.fillStyle = C.catBody;
         ctx.beginPath();
@@ -376,7 +373,6 @@ canvas {
   var ObstacleManager = (function() {
     var spawnTimer = 0;
     var nextSpawn  = 0;
-    var lastSpawnX = W;
     var pool = [];                   // pre-populated obstacle objects
     var active = [];                 // active references
 
@@ -395,7 +391,6 @@ canvas {
           pool[i].x = W;
           pool[i].active = true;
           active.push(pool[i]);
-          lastSpawnX = W;
           return;
         }
       }
@@ -411,10 +406,6 @@ canvas {
       return Math.floor(Math.random() * OBSTACLES.length);
     }
 
-    function canSpawn() {
-      return active.length < MAX_OBSTACLES && (W - lastSpawnX) >= MIN_GAP;
-    }
-
     function update(dt) {
       if (gameState !== 'PLAYING') return;
 
@@ -424,10 +415,10 @@ canvas {
 
       // Spawn
       spawnTimer += dt;
-      if (spawnTimer >= nextSpawn) {
+      if (spawnTimer >= nextSpawn && active.length < MAX_OBSTACLES) {
         spawnTimer = 0;
         nextSpawn = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
-        if (canSpawn()) acquire(randomType());
+        acquire(randomType());
       }
 
       // Move & recycle
@@ -568,10 +559,14 @@ canvas {
   //  INPUT module
   // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
   var Input = (function() {
+    var escPressed = false;
+    var rPressed = false;
     function isJumpKey(e)  { return e.code === 'Space' || e.code === 'ArrowUp'  || e.code === 'KeyW'; }
     function isDuckKey(e)  { return e.code === 'ArrowDown' || e.code === 'KeyS'; }
 
     function onKeyDown(e) {
+      if (e.code === 'Escape') { escPressed = true; e.preventDefault(); return; }
+      if (e.code === 'KeyR') { rPressed = true; anyKey = true; e.preventDefault(); return; }
       if (isJumpKey(e)) { jumpKey = true; anyKey = true; e.preventDefault(); }
       if (isDuckKey(e)) { duckKey = true; anyKey = true; e.preventDefault(); }
       if (e.code === 'Space') e.preventDefault();
@@ -604,6 +599,18 @@ canvas {
       Player.setDuck(duckKey && Player.isOnGround());
     }
 
+    function consumePause() {
+      var v = escPressed;
+      escPressed = false;
+      return v;
+    }
+
+    function consumeRestart() {
+      var v = rPressed;
+      rPressed = false;
+      return v;
+    }
+
     function consumeAnyKey() {
       var v = anyKey;
       anyKey = false;
@@ -618,7 +625,7 @@ canvas {
       canvas.addEventListener('touchcancel', onTouchEnd);
     }
 
-    return { init: init, poll: poll, consumeAnyKey: consumeAnyKey };
+    return { init: init, poll: poll, consumeAnyKey: consumeAnyKey, consumePause: consumePause, consumeRestart: consumeRestart };
   })();
 
   // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
@@ -682,6 +689,19 @@ canvas {
         gameState = 'READY';
         resetAll();
       }
+
+      // Pause toggle / restart
+      if (Input.consumePause()) {
+        if (gameState === 'PLAYING') {
+          gameState = 'PAUSED';
+        } else if (gameState === 'PAUSED') {
+          gameState = 'PLAYING';
+        }
+      }
+      if (gameState === 'PAUSED' && Input.consumeRestart()) {
+        gameState = 'READY';
+        resetAll();
+      }
     }
 
     function resetAll() {
@@ -700,6 +720,7 @@ canvas {
       dogState     = 'idle';
       catY = GROUND_Y; catVY = 0; catOnGround = true;
       catDucking = false; runFrame = 0; runTimer = 0;
+      windowOffset = 0;
       Background.reset();
       ObstacleManager.reset();
       Dog.reset();
@@ -1015,6 +1036,24 @@ canvas {
           ctx.fillText('\u2193 Duck', W / 2, H * 3 / 4 + 10);
           ctx.globalAlpha = 1;
         }
+      }
+
+      if (gameState === 'PAUSED') {
+        // Dim overlay
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(0, 0, W, H);
+
+        var fsP = Math.round(26 * fontScale);
+        ctx.font = 'bold ' + fsP + 'px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText('PAUSED', W / 2, H / 2 - 20);
+
+        var fsP2 = Math.round(14 * fontScale);
+        ctx.font = fsP2 + 'px monospace';
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.fillText('ESC to resume', W / 2, H / 2 + 10);
+        ctx.fillText('R to restart', W / 2, H / 2 + 30);
       }
 
       if (gameState === 'GAME_OVER') {
