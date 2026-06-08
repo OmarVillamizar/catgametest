@@ -61,7 +61,7 @@ canvas {
       if (invulnTimer > 0) { invulnTimer -= dt; if (invulnTimer < 0) invulnTimer = 0; }
       if (stumbleTimer > 0) stumbleTimer--;
       if (deathTimer > 0) deathTimer--;
-      checkCollisions();
+      Game.checkCollisions();
     }
   }
 
