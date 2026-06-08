@@ -90,6 +90,13 @@ canvas {
         for (var i = 0; i < n; i++) { stepFrame(); }
       },
       render: function() { Game.renderFrame(); },
+      forceGameOver: function() {
+        damageCount = 3;
+        gameState = 'GAME_OVER';
+        deathTimer = 60;
+        anyKey = false; jumpKey = false; duckKey = false;
+        if (score > highScore) { highScore = score; try { localStorage.setItem('catRunnerHighScore', String(highScore)); } catch(e) {} }
+      },
       reset: function() { Game.resetAll(); }
     };
   }

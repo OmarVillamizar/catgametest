@@ -154,6 +154,33 @@ async function main() {
     `hitbox.y=${s.hitbox.y}, catY=${s.catY.toFixed(1)}, expected=${expectedHbY.toFixed(1)}, delta=${hbDelta.toFixed(2)}`);
 
   // ══════════════════════════════════════
+  // Bug 8: Game over edge cases — no instant restart from sticky input
+  // ══════════════════════════════════════
+  await input('restart');
+  s = await ensurePlaying(60);
+  // Force game over via debug API (simulates 3-hit death mid-jump)
+  await page.evaluate(() => window.__game.forceGameOver());
+  await tick(2);
+  s = await snap();
+  check('bug8a_gameover_sticks', s.state === 'GAME_OVER' && s.deathTimer > 0,
+    `state: ${s.state}, deathTimer: ${s.deathTimer} (expected GAME_OVER with cooldown)`);
+
+  // Try to restart during cooldown — should NOT work  
+  await input('start');
+  await tick(5);
+  s = await snap();
+  check('bug8b_no_restart_during_cooldown', s.state === 'GAME_OVER',
+    `state: ${s.state} (should still be GAME_OVER)`);
+
+  // Wait for cooldown (~1s), then restart should work
+  await tick(70);
+  await input('start');
+  await tick(5);
+  s = await snap();
+  check('bug8c_restart_after_cooldown', s.state !== 'GAME_OVER',
+    `state: ${s.state} (should have restarted)`);
+
+  // ══════════════════════════════════════
   // Summary
   // ══════════════════════════════════════
   const passed = results.filter(r => r.pass).length;
