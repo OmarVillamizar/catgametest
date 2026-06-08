@@ -217,6 +217,28 @@ canvas {
   var anyKey   = false;
   var jumpEdge = false;            // rising edge this tick
 
+  var Sound = (function() {
+    var bark = new Audio('sounds/bark_dog.mp3');
+    var music = new Audio('sounds/music.mp3');
+    bark.preload = 'auto';
+    music.preload = 'auto';
+    music.loop = true;
+
+    function play(audio) {
+      audio.currentTime = 0;
+      audio.play().catch(function() {});
+    }
+
+    return {
+      playBark:    function() { play(bark); },
+      playMusic:   function() { music.currentTime = 0; music.play().catch(function(){}); },
+      pauseMusic:  function() { music.pause(); },
+      resumeMusic: function() { music.play().catch(function(){}); },
+      stopMusic:   function() { music.pause(); music.currentTime = 0; }
+    };
+  })();
+
+
   // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
   //  BACKGROUND module
   // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
