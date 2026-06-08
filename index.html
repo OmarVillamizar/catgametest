@@ -51,7 +51,7 @@ canvas {
   // Step one game tick (used by puppeteer tick(n))
   function stepFrame() {
     var dt = FIXED_DT;
-    transition();
+    Game.transition();
     if (gameState === 'PLAYING') {
       Input.poll();
       Player.update(dt);
@@ -60,7 +60,7 @@ canvas {
       score += gameSpeed * dt / 10;
       if (invulnTimer > 0) { invulnTimer -= dt; if (invulnTimer < 0) invulnTimer = 0; }
       if (stumbleTimer > 0) stumbleTimer--;
-      checkCollisions();
+      Game.checkCollisions();
     }
   }
 
@@ -1310,7 +1310,7 @@ canvas {
 
     loadHighScore();
 
-    return { loop: loop, resetAll: resetAll };
+    return { loop: loop, resetAll: resetAll, transition: transition, checkCollisions: checkCollisions };
   })();
 
   // ÔöÇÔöÇ Boot ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
