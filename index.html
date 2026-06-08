@@ -60,7 +60,8 @@ canvas {
       score += gameSpeed * dt / 10;
       if (invulnTimer > 0) { invulnTimer -= dt; if (invulnTimer < 0) invulnTimer = 0; }
       if (stumbleTimer > 0) stumbleTimer--;
-      Game.checkCollisions();
+      if (deathTimer > 0) deathTimer--;
+      checkCollisions();
     }
   }
 
@@ -78,7 +79,7 @@ canvas {
           obstacles: obs,
           dog: { x: dogX, state: dogState },
           speed: gameSpeed, score: Math.floor(score), frame: frameCount,
-          damageCount: damageCount, invulnTimer: invulnTimer,
+          damageCount: damageCount, invulnTimer: invulnTimer, deathTimer: deathTimer,
           windowOffset: windowOffset,
           drawLog: lastFrameDrawLog.slice()
         };
@@ -182,6 +183,7 @@ canvas {
   var dogX         = DOG_BASE_X;
   var dogState     = 'idle';       // idle | advancing | lunging
   var stumbleTimer = 0;            // stumble anim frames remaining
+  var deathTimer   = 0;            // cooldown frames before restart allowed
   var score        = 0;            // current score
   var highScore    = 0;            // from localStorage
   var introPhase   = 'idle';       // idle | bolting (cat runs to position)
@@ -856,7 +858,7 @@ canvas {
         }
       }
 
-      if (gameState === 'GAME_OVER' && Input.consumeAnyKey()) {
+      if (gameState === 'GAME_OVER' && Input.consumeAnyKey() && deathTimer <= 0) {
         gameState = 'READY';
         resetAll();
       }
@@ -881,6 +883,7 @@ canvas {
       damageCount  = 0;
       invulnTimer  = 0;
       stumbleTimer = 0;
+      deathTimer   = 0;
       score        = 0;
       introPhase   = 'idle';
       introTimer   = 0;
@@ -933,6 +936,11 @@ canvas {
 
       if (damageCount >= 3) {
         gameState = 'GAME_OVER';
+        deathTimer = 60; // ~1s cooldown before restart allowed
+        // Clear ALL sticky input to prevent instant restart
+        anyKey = false;
+        jumpKey = false;
+        duckKey = false;
         saveHighScore();
       }
     }
@@ -1062,6 +1070,7 @@ canvas {
           score += gameSpeed * FIXED_DT / 10;
           if (invulnTimer > 0) { invulnTimer -= FIXED_DT; if (invulnTimer < 0) invulnTimer = 0; }
           if (stumbleTimer > 0) stumbleTimer--;
+          if (deathTimer > 0) deathTimer--;
           checkCollisions();
         }
         accumulator -= FIXED_DT;
