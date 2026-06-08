@@ -1,12 +1,11 @@
 // debug/harness.mjs — Puppeteer test harness for cat-runner-game
 // Run: node debug/harness.mjs
-// Reads index.html served at http://127.0.0.1:5500?debug=1
 
 import puppeteer from 'puppeteer';
 
 const URL = 'http://127.0.0.1:5500/index.html?debug=1';
 const GROUND_Y = 240;
-const TICKS_10S = 600; // ~10s at 60fps
+const TICKS_5S = 300;
 
 const results = [];
 const check = (name, pass, detail) => {
@@ -21,76 +20,100 @@ async function main() {
   await page.goto(URL, { waitUntil: 'load' });
   await page.waitForFunction(() => window.__game && window.__game.snap);
 
-  const snap  = () => page.evaluate(() => window.__game.snap());
+  const snap  = () => page.evaluate(() => { window.__game.render(); return window.__game.snap(); });
   const input = (i) => page.evaluate((x) => window.__game.input(x), i);
-  const tick  = (n) => page.evaluate((x) => window.__game.tick(x), n);
+  const tick  = (n) => page.evaluate((x) => { window.__game.tick(x); window.__game.render(); }, n);
 
-  // ────────────────────────────────────────
-  // Bug 1: Spawn — obstacles appear after running
-  // ────────────────────────────────────────
+  // Helper: start game and wait until PLAYING + onGround
+  async function ensurePlaying(ticks = 60) {
+    let s = await snap();
+    if (s.state !== 'PLAYING') {
+      await input('start');
+      await tick(ticks);
+      // Wait max 2s for state to become PLAYING
+      for (let i = 0; i < 30; i++) {
+        s = await snap();
+        if (s.state === 'PLAYING' && s.onGround) break;
+        await tick(5);
+      }
+    }
+    return await snap();
+  }
+
+  // ══════════════════════════════════════
+  // Bug 1: Spawn — obstacles appear
+  // ══════════════════════════════════════
   await input('start');
-  await tick(TICKS_10S);
+  await tick(TICKS_5S);
   let s = await snap();
   check('bug1_spawn', s.obstacles.length > 0,
-    `obstacles after ${TICKS_10S} ticks: ${s.obstacles.length}`);
+    `obstacles after ${TICKS_5S} ticks: ${s.obstacles.length}`);
 
-  // ────────────────────────────────────────
-  // Bug 2: Parallax — windowOffset changes over time
-  // ────────────────────────────────────────
+  // ══════════════════════════════════════
+  // Bug 2: Parallax — windowOffset changes
+  // ══════════════════════════════════════
   let offset1 = s.windowOffset;
-  await tick(300);
+  await tick(200);
   s = await snap();
   let offset2 = s.windowOffset;
   check('bug2_parallax', Math.abs(offset2 - offset1) > 0.1,
-    `windowOffset delta: ${(offset2 - offset1).toFixed(3)} (expected >0.1)`);
+    `windowOffset delta: ${(offset2 - offset1).toFixed(3)}`);
 
-  // ────────────────────────────────────────
+  // ══════════════════════════════════════
   // Bug 3: Pause — ESC toggles PAUSED, R restarts
-  // ────────────────────────────────────────
+  // ══════════════════════════════════════
+  // Restart fresh to avoid game-over from bug1/2
+  await input('restart');
+  await ensurePlaying(60);
+  s = await snap();
+  check('bug3_precheck', s.state === 'PLAYING', `pre-pause state: ${s.state}`);
+
   await input('pause');
   s = await snap();
   check('bug3a_pause', s.state === 'PAUSED', `state: ${s.state}`);
+
   await input('pause'); // unpause
   s = await snap();
   check('bug3b_unpause', s.state === 'PLAYING', `state: ${s.state}`);
+
   await input('pause');
   await input('restart');
   s = await snap();
   check('bug3c_restart', s.state === 'READY' && s.score === 0,
     `state: ${s.state}, score: ${s.score}`);
 
-  // ────────────────────────────────────────
+  // ══════════════════════════════════════
   // Bug 4: Cat duplicate — only 1 cat-body when ducking
-  // ────────────────────────────────────────
-  await input('start');
-  await tick(30);
-  // Wait for cat to be on ground
-  await page.waitForFunction(() => {
-    const s = window.__game.snap();
-    return s.onGround && s.state === 'PLAYING';
-  });
+  // ══════════════════════════════════════
+  s = await ensurePlaying(60);
   await input('duck');
-  await tick(3);
+  await tick(5);
   s = await snap();
   const bodyCount = s.drawLog.filter(d => d.part === 'cat-body').length;
   check('bug4_no_duplicate', bodyCount === 1,
-    `cat-body entries: ${bodyCount} (expected 1)`);
+    `cat-body entries: ${bodyCount} (expected 1, state: ${s.state}, ducking: ${s.ducking})`);
 
-  // ────────────────────────────────────────
+  // ══════════════════════════════════════
   // Bug 5: Duck complete — tail, ears, paws, nose, whiskers
-  // ────────────────────────────────────────
-  const duckParts = s.drawLog.map(d => d.part);
-  const requiredParts = ['cat-tail', 'cat-leg', 'cat-body', 'cat-head', 'cat-ear', 'cat-nose', 'cat-whisker'];
-  const missing = requiredParts.filter(p => !duckParts.includes(p));
-  check('bug5_duck_complete', missing.length === 0,
-    missing.length > 0 ? `missing: ${missing.join(', ')}` : `all ${requiredParts.length} parts present`);
+  // ══════════════════════════════════════
+  if (s.state === 'PLAYING') {
+    const duckParts = s.drawLog.map(d => d.part);
+    const requiredParts = ['cat-tail', 'cat-leg', 'cat-body', 'cat-head', 'cat-ear', 'cat-nose', 'cat-whisker'];
+    const missing = requiredParts.filter(p => !duckParts.includes(p));
+    check('bug5_duck_complete', missing.length === 0,
+      missing.length > 0 ? `missing: ${missing.join(', ')}` : `all ${requiredParts.length} parts present`);
+  } else {
+    check('bug5_duck_complete', false, `state is ${s.state}, cannot test`);
+  }
 
-  // ────────────────────────────────────────
-  // Bug 6: Dog — paws above ground, body larger than cat
-  // ────────────────────────────────────────
+  // ══════════════════════════════════════
+  // Bug 6: Dog — paws above ground, body bigger than cat
+  // ══════════════════════════════════════
   await input('releaseDuck');
   await tick(10);
   s = await snap();
+
+  // Dog legs above ground
   const dogLegs = s.drawLog.filter(d => d.part === 'dog-leg');
   let dogLegOK = true;
   let dogLegDetail = '';
@@ -98,7 +121,7 @@ async function main() {
     const legBottom = leg.y + leg.h;
     if (legBottom > GROUND_Y + 2) {
       dogLegOK = false;
-      dogLegDetail += `leg at y=${leg.y.toFixed(1)} bottom=${legBottom.toFixed(1)} > GROUND_Y=${GROUND_Y}; `;
+      dogLegDetail += `leg y=${leg.y.toFixed(1)} bottom=${legBottom.toFixed(1)} > ${GROUND_Y}; `;
     }
   }
   if (!dogLegDetail) dogLegDetail = `all ${dogLegs.length} legs OK`;
@@ -117,29 +140,33 @@ async function main() {
   }
   check('bug6b_dog_bigger_than_cat', ratioOK, ratioDetail);
 
-  // ────────────────────────────────────────
-  // Bug 7: Jump hitbox — hitbox.y ≈ catY - 60 (not fixed 180)
-  // ────────────────────────────────────────
+  // ══════════════════════════════════════
+  // Bug 7: Jump hitbox — hitbox.y ≈ catY - 60
+  // ══════════════════════════════════════
+  await input('restart');
+  s = await ensurePlaying(60);
   await input('jump');
-  await tick(8); // cat should be mid-jump
+  await tick(8);
   s = await snap();
   const expectedHbY = s.catY - 60;
   const hbDelta = Math.abs(s.hitbox.y - expectedHbY);
   check('bug7_jump_hitbox', hbDelta < 2,
     `hitbox.y=${s.hitbox.y}, catY=${s.catY.toFixed(1)}, expected=${expectedHbY.toFixed(1)}, delta=${hbDelta.toFixed(2)}`);
 
-  // ────────────────────────────────────────
+  // ══════════════════════════════════════
   // Summary
-  // ────────────────────────────────────────
+  // ══════════════════════════════════════
   const passed = results.filter(r => r.pass).length;
   const total = results.length;
   console.log(`\n📊 Results: ${passed}/${total} passed`);
+  if (passed < total) {
+    const failed = results.filter(r => !r.pass).map(r => r.name);
+    console.log(`❌ Failed: ${failed.join(', ')}`);
+  }
 
   await browser.close();
 
-  // Return JSON for programmatic consumption
   const exitCode = passed === total ? 0 : 1;
-  process.stdout.write(JSON.stringify({ results, passed, total, exitCode }));
   process.exit(exitCode);
 }
 

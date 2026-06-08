@@ -88,6 +88,7 @@ canvas {
         n = n || 1;
         for (var i = 0; i < n; i++) { stepFrame(); }
       },
+      render: function() { Game.renderFrame(); },
       reset: function() { Game.resetAll(); }
     };
   }
@@ -964,6 +965,8 @@ canvas {
         accumulator -= FIXED_DT;
       }
 
+    function renderFrame() {
+      updateFontScale();
       ctx.clearRect(0, 0, W, H);
       if (DEBUG) { drawLog = []; }
       Background.render(ctx);
@@ -1039,7 +1042,31 @@ canvas {
         ' | invuln:' + invulnTimer.toFixed(0) +
         ' | score:' + Math.floor(score);
       }
+    }
 
+    function loop(ts) {
+      var dt = ts - lastTime;
+      lastTime = ts;
+      if (dt > DT_CAP) dt = DT_CAP;
+      if (dt <= 0) { requestAnimationFrame(loop); return; }
+
+      accumulator += dt;
+      while (accumulator >= FIXED_DT) {
+        transition();
+        if (gameState === 'PLAYING') {
+          Input.poll();
+          Player.update(FIXED_DT);
+          ObstacleManager.update(FIXED_DT);
+          Background.update(FIXED_DT);
+          score += gameSpeed * FIXED_DT / 10;
+          if (invulnTimer > 0) { invulnTimer -= FIXED_DT; if (invulnTimer < 0) invulnTimer = 0; }
+          if (stumbleTimer > 0) stumbleTimer--;
+          checkCollisions();
+        }
+        accumulator -= FIXED_DT;
+      }
+
+      renderFrame();
       requestAnimationFrame(loop);
     }
 
@@ -1310,7 +1337,7 @@ canvas {
 
     loadHighScore();
 
-    return { loop: loop, resetAll: resetAll, transition: transition, checkCollisions: checkCollisions };
+    return { loop: loop, resetAll: resetAll, transition: transition, checkCollisions: checkCollisions, renderFrame: renderFrame };
   })();
 
   // ÔöÇÔöÇ Boot ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
