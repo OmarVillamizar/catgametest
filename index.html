@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -27,6 +27,7 @@ canvas {
   var canvas = document.getElementById('game');
   var ctx = canvas.getContext('2d');
 
+  // ÔöÇÔöÇ Constants ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
   var W = 800, H = 300;
   canvas.width = W; canvas.height = H;
 
@@ -37,17 +38,19 @@ canvas {
   var JUMP_VEL    = -12;
   var GRAVITY     = 0.6;
   var BASE_SPEED  = 3;
-  var SPEED_RAMP  = 0.08;
-  var SPEED_CAP   = 9;
+  var SPEED_RAMP  = 0.08;          // ├ù per 10s
+  var SPEED_CAP   = 9;             // 3├ù base
+  var SPEED_MAX   = 9;
   var INVULN_MS   = 800;
   var BLINK_MS    = 100;
   var MAX_OBSTACLES = 3;
-  var SPAWN_MIN   = 1200;
+  var SPAWN_MIN   = 1200;          // ms
   var SPAWN_MAX   = 3000;
-  var MIN_GAP     = 300;
+  var MIN_GAP     = 300;           // px between obstacles
   var DOG_BASE_X  = -100;
   var DOG_POSITIONS = [-100, 60, 150, 240];
 
+  // Obstacle definitions: { name, w, h, short (floating), draw fn }
   var OBSTACLES = [
     { name:'vase',  w:22, h:50, short:false,
       draw:function(ctx,x,y){ ctx.fillStyle='#C8B078'; ctx.fillRect(x+7,y-40,19,40);
@@ -87,6 +90,7 @@ canvas {
         ctx.fillStyle='#80C060'; ctx.fill(); } }
   ];
 
+  // Color palette
   var C = {
     wall:        '#F0E4D8', wallPattern: '#E8D8C8',
     floor:       '#C4A882', floorDark:    '#B89870', floorLine: '#A88868',
@@ -98,32 +102,46 @@ canvas {
     text:        '#4A3728'
   };
 
-  var gameState    = 'READY';
+  // ÔöÇÔöÇ Shared State ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+  var gameState    = 'READY';       // READY | PLAYING | GAME_OVER
   var gameSpeed    = BASE_SPEED;
   var floorOffset  = 0;
-  var elapsedTime  = 0;
-  var damageCount  = 0;
-  var invulnTimer  = 0;
+  var elapsedTime  = 0;            // ms, for speed ramp
+  var damageCount  = 0;            // 0-3
+  var invulnTimer  = 0;            // ms remaining
   var dogX         = DOG_BASE_X;
-  var dogState     = 'idle';
-  var stumbleTimer = 0;
+  var dogState     = 'idle';       // idle | advancing | lunging
+  var stumbleTimer = 0;            // stumble anim frames remaining
+  var score        = 0;            // current score
+  var highScore    = 0;            // from localStorage
+  var introPhase   = 'idle';       // idle | bolting (cat runs to position)
+  var introTimer   = 0;            // ms
+  var introCatX    = 400;          // cat X during intro
+  var introYarnX   = 420;          // yarn ball position
+  var introYarnVY  = 0;            // yarn bounce velocity
+  var isMobile     = false;        // touch device detection
 
-  var catY        = GROUND_Y;
+  // ÔöÇÔöÇ Cat State ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+  var catY        = GROUND_Y;      // feet position in px
   var catVY       = 0;
   var catOnGround = true;
   var catDucking  = false;
-  var runFrame    = 0;
+  var runFrame    = 0;             // 0-3
   var runTimer    = 0;
   var RUN_MS      = 100;
   var LEG_OFFSETS = [0, -3, -2, -1];
 
+  // ÔöÇÔöÇ Input State ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
   var jumpKey  = false;
   var duckKey  = false;
   var anyKey   = false;
-  var jumpEdge = false;
+  var jumpEdge = false;            // rising edge this tick
 
+  // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+  //  BACKGROUND module
+  // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
   var Background = (function() {
-    var SEGMENT_W = 810;
+    var SEGMENT_W = 810;           // 6 planks ├ù 135px
     var PLANK_W = 135, PLANK_H = 60;
 
     function update(dt) {
@@ -132,19 +150,24 @@ canvas {
     }
 
     function render(ctx) {
+      // Wall
       ctx.fillStyle = C.wall;
       ctx.fillRect(0, 0, W, 232);
+      // Dot pattern
       ctx.fillStyle = C.wallPattern;
-      for (var x = 20; x < W; x += 40)
-        for (var y = 20; y < 232; y += 40)
+      for (var x = 20; x < W; x += 40) {
+        for (var y = 20; y < 232; y += 40) {
           ctx.fillRect(x, y, 2, 2);
+        }
+      }
       // Window
       var wx = 620, wy = 60, ww = 100, wh = 130;
       ctx.fillStyle = C.windowFrame;
       ctx.fillRect(wx, wy, ww, wh);
       ctx.fillStyle = C.windowGlass;
       ctx.fillRect(wx + 8, wy + 8, ww - 16, wh - 16);
-      ctx.strokeStyle = C.windowFrame; ctx.lineWidth = 4;
+      ctx.strokeStyle = C.windowFrame;
+      ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.moveTo(wx + ww / 2, wy + 8); ctx.lineTo(wx + ww / 2, wy + wh - 8);
       ctx.moveTo(wx + 8, wy + wh / 2); ctx.lineTo(wx + ww - 8, wy + wh / 2);
@@ -152,35 +175,50 @@ canvas {
       // Baseboard
       ctx.fillStyle = C.baseboard;
       ctx.fillRect(0, 232, W, 8);
-      // Floor
+      // Floor planks (parallax scroll)
       for (var seg = -1; seg <= 1; seg++) {
         var segX = seg * SEGMENT_W - floorOffset;
         for (var i = 0; i < 6; i++) {
           var px = segX + i * PLANK_W;
           ctx.fillStyle = (i % 2 === 0) ? C.floor : C.floorDark;
           ctx.fillRect(px, GROUND_Y, PLANK_W, PLANK_H);
-          ctx.strokeStyle = C.floorLine; ctx.lineWidth = 1;
+          ctx.strokeStyle = C.floorLine;
+          ctx.lineWidth = 1;
           ctx.strokeRect(px, GROUND_Y, PLANK_W, PLANK_H);
         }
       }
     }
 
-    function reset() { floorOffset = 0; }
+    function reset() {
+      floorOffset = 0;
+    }
+
     return { update: update, render: render, reset: reset };
   })();
 
+  // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+  //  PLAYER module (cat drawing, animation, hitbox)
+  // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
   var Player = (function() {
     function getHitbox() {
-      if (catDucking && catOnGround) return { x: CAT_X - 18, y: 204, w: 40, h: 36 };
+      if (catDucking && catOnGround) {
+        return { x: CAT_X - 18, y: 204, w: 40, h: 36 };
+      }
       return { x: CAT_X - 18, y: 180, w: 40, h: 60 };
     }
 
     function update(dt) {
+      // ÔöÇÔöÇ Physics ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       if (!catOnGround) {
         catVY += GRAVITY * (dt / FIXED_DT);
         catY  += catVY * (dt / FIXED_DT);
-        if (catY >= GROUND_Y) { catY = GROUND_Y; catVY = 0; catOnGround = true; }
+        if (catY >= GROUND_Y) {
+          catY = GROUND_Y;
+          catVY = 0;
+          catOnGround = true;
+        }
       }
+      // ÔöÇÔöÇ Animation timer ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       if (gameState === 'PLAYING' && catOnGround && !catDucking) {
         runTimer += dt;
         while (runTimer >= RUN_MS) { runTimer -= RUN_MS; runFrame = (runFrame + 1) % 4; }
@@ -189,58 +227,77 @@ canvas {
 
     function jump() {
       if (!catOnGround) return;
-      catVY = JUMP_VEL; catOnGround = false; catDucking = false;
+      catVY = JUMP_VEL;
+      catOnGround = false;
+      catDucking = false;
     }
 
-    function setDuck(v) { catDucking = v && catOnGround; }
+    function setDuck(v) {
+      catDucking = v && catOnGround;
+    }
 
     function render(ctx) {
       ctx.save();
-      var fx = CAT_X, fy = catY;
+      var fx = CAT_X;                   // horizontal anchor
+      var fy = catY;                    // feet Y
       var legOff = catOnGround && !catDucking ? LEG_OFFSETS[runFrame] : 0;
 
+      // ÔöÇÔöÇ Tail ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       ctx.strokeStyle = C.catBody; ctx.lineWidth = 5; ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(fx - 16, fy - 28);
       ctx.bezierCurveTo(fx - 50, fy - 50, fx - 50, fy - 85, fx - 30, fy - 75);
       ctx.stroke();
 
+      // ÔöÇÔöÇ Back legs ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       ctx.fillStyle = C.catLeg;
       ctx.fillRect(fx + 2,  fy - 22 + legOff, 6, 22);
       ctx.fillRect(fx + 10, fy - 24 - legOff, 6, 24);
 
+      // ÔöÇÔöÇ Body ellipse ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       ctx.fillStyle = C.catBody;
       ctx.beginPath();
       ctx.ellipse(fx, fy - 30, 18, 16, 0, 0, Math.PI * 2);
       ctx.fill();
+      // Belly
       ctx.fillStyle = C.catBelly;
       ctx.beginPath();
       ctx.ellipse(fx + 2, fy - 27, 10, 10, 0, 0, Math.PI * 2);
       ctx.fill();
 
+      // ÔöÇÔöÇ Front legs ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       ctx.fillStyle = C.catLeg;
       ctx.fillRect(fx - 16, fy - 24 + legOff, 6, 24);
       ctx.fillRect(fx - 6,  fy - 26 - legOff, 6, 26);
 
+      // ÔöÇÔöÇ Head ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       var hcy = fy - 55;
       ctx.fillStyle = C.catBody;
       ctx.beginPath();
       ctx.arc(fx + 4, hcy, 13, 0, Math.PI * 2);
       ctx.fill();
 
+      // ÔöÇÔöÇ Ears ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+      // Left ear
       ctx.fillStyle = C.catBody;
       ctx.beginPath();
-      ctx.moveTo(fx - 6, hcy - 8); ctx.lineTo(fx - 12, hcy - 26); ctx.lineTo(fx + 2, hcy - 8); ctx.fill();
+      ctx.moveTo(fx - 6, hcy - 8); ctx.lineTo(fx - 12, hcy - 26); ctx.lineTo(fx + 2, hcy - 8);
+      ctx.fill();
       ctx.fillStyle = C.catInnerEar;
       ctx.beginPath();
-      ctx.moveTo(fx - 4, hcy - 9); ctx.lineTo(fx - 9, hcy - 22); ctx.lineTo(fx, hcy - 9); ctx.fill();
+      ctx.moveTo(fx - 4, hcy - 9); ctx.lineTo(fx - 9, hcy - 22); ctx.lineTo(fx, hcy - 9);
+      ctx.fill();
+      // Right ear
       ctx.fillStyle = C.catBody;
       ctx.beginPath();
-      ctx.moveTo(fx + 4, hcy - 10); ctx.lineTo(fx + 10, hcy - 28); ctx.lineTo(fx + 14, hcy - 8); ctx.fill();
+      ctx.moveTo(fx + 4, hcy - 10); ctx.lineTo(fx + 10, hcy - 28); ctx.lineTo(fx + 14, hcy - 8);
+      ctx.fill();
       ctx.fillStyle = C.catInnerEar;
       ctx.beginPath();
-      ctx.moveTo(fx + 6, hcy - 10); ctx.lineTo(fx + 10, hcy - 24); ctx.lineTo(fx + 12, hcy - 9); ctx.fill();
+      ctx.moveTo(fx + 6, hcy - 10); ctx.lineTo(fx + 10, hcy - 24); ctx.lineTo(fx + 12, hcy - 9);
+      ctx.fill();
 
+      // ÔöÇÔöÇ Eyes ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       ctx.fillStyle = C.catEye;
       ctx.beginPath();
       ctx.arc(fx - 2, hcy - 4, 2.5, 0, Math.PI * 2);
@@ -252,11 +309,13 @@ canvas {
       ctx.arc(fx + 13, hcy - 5, 1, 0, Math.PI * 2);
       ctx.fill();
 
+      // ÔöÇÔöÇ Nose ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       ctx.fillStyle = C.catNose;
       ctx.beginPath();
       ctx.moveTo(fx + 4, hcy - 1); ctx.lineTo(fx + 8, hcy - 1); ctx.lineTo(fx + 6, hcy + 2);
       ctx.fill();
 
+      // ÔöÇÔöÇ Whiskers ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       ctx.strokeStyle = C.catEye; ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(fx - 8, hcy - 1); ctx.lineTo(fx - 22, hcy - 3);
@@ -265,6 +324,7 @@ canvas {
       ctx.moveTo(fx + 14, hcy); ctx.lineTo(fx + 28, hcy);
       ctx.stroke();
 
+      // ÔöÇÔöÇ Jump pose: ears flatten ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       if (!catOnGround) {
         ctx.fillStyle = C.catBody;
         ctx.beginPath();
@@ -273,6 +333,7 @@ canvas {
         ctx.fill();
       }
 
+      // ÔöÇÔöÇ Duck pose: compressed body ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       if (catDucking && catOnGround) {
         ctx.fillStyle = C.catBody;
         ctx.beginPath();
@@ -282,10 +343,12 @@ canvas {
         ctx.beginPath();
         ctx.ellipse(fx + 2, fy - 20, 11, 7, 0, 0, Math.PI * 2);
         ctx.fill();
+        // Head lowered
         ctx.fillStyle = C.catBody;
         ctx.beginPath();
         ctx.arc(fx + 4, fy - 38, 11, 0, Math.PI * 2);
         ctx.fill();
+        // Eyes lowered
         ctx.fillStyle = C.catEye;
         ctx.beginPath();
         ctx.arc(fx, fy - 40, 2, 0, Math.PI * 2);
@@ -297,24 +360,43 @@ canvas {
     }
 
     function isOnGround() { return catOnGround; }
-    function reset() { catY = GROUND_Y; catVY = 0; catOnGround = true; catDucking = false; runFrame = 0; runTimer = 0; }
-    return { update: update, render: render, jump: jump, setDuck: setDuck, getHitbox: getHitbox, isOnGround: isOnGround, reset: reset };
+
+    function reset() {
+      catY = GROUND_Y; catVY = 0; catOnGround = true;
+      catDucking = false; runFrame = 0; runTimer = 0;
+    }
+
+    return { update: update, render: render, jump: jump, setDuck: setDuck,
+             getHitbox: getHitbox, isOnGround: isOnGround, reset: reset };
   })();
 
+  // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+  //  OBSTACLE MANAGER module
+  // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
   var ObstacleManager = (function() {
-    var spawnTimer = 0, nextSpawn = 0, lastSpawnX = W;
-    var pool = [], active = [];
+    var spawnTimer = 0;
+    var nextSpawn  = 0;
+    var lastSpawnX = W;
+    var pool = [];                   // pre-populated obstacle objects
+    var active = [];                 // active references
 
+    // Pre-allocate pool of 6 obstacle objects
     function initPool() {
       pool = [];
-      for (var i = 0; i < 6; i++) pool.push({ type: null, x: 0, active: false });
+      for (var i = 0; i < 6; i++) {
+        pool.push({ type: null, x: 0, active: false });
+      }
     }
 
     function acquire(type) {
       for (var i = 0; i < pool.length; i++) {
         if (!pool[i].active) {
-          pool[i].type = type; pool[i].x = W; pool[i].active = true;
-          active.push(pool[i]); lastSpawnX = W; return;
+          pool[i].type = type;
+          pool[i].x = W;
+          pool[i].active = true;
+          active.push(pool[i]);
+          lastSpawnX = W;
+          return;
         }
       }
     }
@@ -325,38 +407,56 @@ canvas {
       if (idx !== -1) active.splice(idx, 1);
     }
 
-    function randomType() { return Math.floor(Math.random() * OBSTACLES.length); }
+    function randomType() {
+      return Math.floor(Math.random() * OBSTACLES.length);
+    }
 
-    function canSpawn() { return active.length < MAX_OBSTACLES && (W - lastSpawnX) >= MIN_GAP; }
+    function canSpawn() {
+      return active.length < MAX_OBSTACLES && (W - lastSpawnX) >= MIN_GAP;
+    }
 
     function update(dt) {
       if (gameState !== 'PLAYING') return;
+
+      // Speed ramp
       elapsedTime += dt;
       gameSpeed = Math.min(BASE_SPEED * (1 + SPEED_RAMP * (elapsedTime / 10000)), SPEED_CAP);
+
+      // Spawn
       spawnTimer += dt;
       if (spawnTimer >= nextSpawn) {
         spawnTimer = 0;
         nextSpawn = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
         if (canSpawn()) acquire(randomType());
       }
+
+      // Move & recycle
       for (var i = active.length - 1; i >= 0; i--) {
         var obs = active[i];
         obs.x -= gameSpeed * (dt / FIXED_DT);
-        if (obs.x < -OBSTACLES[obs.type].w - 10) recycle(obs);
+        if (obs.x < -OBSTACLES[obs.type].w - 10) {
+          recycle(obs);
+        }
       }
     }
 
     function render(ctx) {
       for (var i = 0; i < active.length; i++) {
-        var obs = active[i], def = OBSTACLES[obs.type];
+        var obs = active[i];
+        var def = OBSTACLES[obs.type];
         var y = def.short ? 200 : GROUND_Y;
         def.draw(ctx, obs.x, y);
+        // Debug hitbox (uncomment to visualize):
+        // var hb = getHitbox(obs);
+        // ctx.strokeStyle='red'; ctx.strokeRect(hb.x,hb.y,hb.w,hb.h);
       }
     }
 
     function getHitbox(obs) {
       var def = OBSTACLES[obs.type];
-      if (def.short) return { x: obs.x, y: 200 - def.h, w: def.w, h: def.h };
+      if (def.short) {
+        return { x: obs.x, y: 200 - def.h, w: def.w, h: def.h };
+      }
       return { x: obs.x, y: GROUND_Y - def.h, w: def.w, h: def.h };
     }
 
@@ -366,57 +466,108 @@ canvas {
       for (var i = active.length - 1; i >= 0; i--) recycle(active[i]);
       spawnTimer = 0;
       nextSpawn = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
-      elapsedTime = 0; gameSpeed = BASE_SPEED;
+      elapsedTime = 0;
+      gameSpeed = BASE_SPEED;
     }
 
     initPool();
-    return { update: update, render: render, getActive: getActive, getHitbox: getHitbox, recycle: recycle, reset: reset };
+
+    return { update: update, render: render, getActive: getActive, getHitbox: getHitbox,
+             recycle: recycle, reset: reset };
   })();
 
+  // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+  //  DOG module
+  // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
   var Dog = (function() {
     function advance() {
       dogX = DOG_POSITIONS[Math.min(damageCount, 3)];
-      dogState = damageCount === 0 ? 'idle' : damageCount === 1 ? 'advancing' : 'lunging';
+      if (damageCount === 0) dogState = 'idle';
+      else if (damageCount === 1) dogState = 'advancing';
+      else dogState = 'lunging';
     }
 
     function render(ctx) {
-      if (gameState === 'READY') return;
-      var dx = dogX, dy = GROUND_Y;
-      ctx.save(); ctx.translate(dx, dy);
+      if (gameState === 'READY') return;  // intro scene draws its own dog
 
+      var dx = dogX;
+      var dy = GROUND_Y;
+
+      ctx.save();
+      ctx.translate(dx, dy);
+
+      // Body
       ctx.fillStyle = C.dogBody;
-      ctx.beginPath(); ctx.ellipse(0, -16, 22, 16, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(0, -16, 22, 16, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Head
       ctx.fillStyle = C.dogBody;
-      ctx.beginPath(); ctx.arc(20, -28, 14, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath();
+      ctx.arc(20, -28, 14, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Ears (floppy)
       ctx.fillStyle = C.dogDark;
       ctx.beginPath();
       ctx.ellipse(10, -34, 6, 12, -0.4, 0, Math.PI * 2);
       ctx.ellipse(28, -34, 6, 12, 0.4, 0, Math.PI * 2);
       ctx.fill();
+
+      // Snout
       ctx.fillStyle = C.dogBody;
       ctx.fillRect(30, -32, 10, 8);
+
+      // Eyes
       ctx.fillStyle = '#2D2D2D';
       ctx.beginPath();
-      ctx.arc(16, -30, 2, 0, Math.PI * 2); ctx.arc(26, -30, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.arc(16, -30, 2, 0, Math.PI * 2);
+      ctx.arc(26, -30, 2, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = '#FFF';
       ctx.beginPath();
-      ctx.arc(15, -31, 0.8, 0, Math.PI * 2); ctx.arc(25, -31, 0.8, 0, Math.PI * 2); ctx.fill();
+      ctx.arc(15, -31, 0.8, 0, Math.PI * 2);
+      ctx.arc(25, -31, 0.8, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Nose
       ctx.fillStyle = '#1A1A1A';
-      ctx.beginPath(); ctx.arc(36, -30, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath();
+      ctx.arc(36, -30, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Tongue (lunging state only)
       if (dogState === 'lunging') {
         ctx.fillStyle = C.dogTongue;
-        ctx.beginPath(); ctx.ellipse(38, -24, 3, 6, 0.15, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(38, -24, 3, 6, 0.15, 0, Math.PI * 2);
+        ctx.fill();
       }
+
+      // Legs
       ctx.fillStyle = C.dogDark;
-      ctx.fillRect(-12, -4, 6, 20); ctx.fillRect(-2, -4, 6, 20);
-      ctx.fillRect(8, -4, 6, 20); ctx.fillRect(18, -4, 6, 20);
+      ctx.fillRect(-12, -4, 6, 20);
+      ctx.fillRect(-2, -4, 6, 20);
+      ctx.fillRect(8, -4, 6, 20);
+      ctx.fillRect(18, -4, 6, 20);
 
       ctx.restore();
     }
 
-    function reset() { dogX = DOG_BASE_X; dogState = 'idle'; damageCount = 0; }
+    function reset() {
+      dogX = DOG_BASE_X;
+      dogState = 'idle';
+      damageCount = 0;
+    }
+
     return { advance: advance, render: render, reset: reset };
   })();
+
+  // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+  //  INPUT module
+  // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+  var Input = (function() {
     function isJumpKey(e)  { return e.code === 'Space' || e.code === 'ArrowUp'  || e.code === 'KeyW'; }
     function isDuckKey(e)  { return e.code === 'ArrowDown' || e.code === 'KeyS'; }
 
@@ -437,18 +588,27 @@ canvas {
       var rect = canvas.getBoundingClientRect();
       var scaleY = H / rect.height;
       var touchY = (e.touches[0].clientY - rect.top) * scaleY;
-      if (touchY < H / 2) jumpKey = true; else duckKey = true;
+      if (touchY < H / 2) { jumpKey = true; } else { duckKey = true; }
     }
 
-    function onTouchEnd(e) { e.preventDefault(); jumpKey = false; duckKey = false; }
+    function onTouchEnd(e) {
+      e.preventDefault();
+      jumpKey = false;
+      duckKey = false;
+    }
 
     function poll() {
+      // Rising-edge jump
       jumpEdge = jumpKey && !jumpEdge;
       if (jumpEdge && gameState === 'PLAYING') Player.jump();
       Player.setDuck(duckKey && Player.isOnGround());
     }
 
-    function consumeAnyKey() { var v = anyKey; anyKey = false; return v; }
+    function consumeAnyKey() {
+      var v = anyKey;
+      anyKey = false;
+      return v;
+    }
 
     function init() {
       window.addEventListener('keydown', onKeyDown);
@@ -461,20 +621,88 @@ canvas {
     return { init: init, poll: poll, consumeAnyKey: consumeAnyKey };
   })();
 
+  // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+  //  GAME module (state machine + loop orchestration)
+  // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
   var Game = (function() {
     var lastTime = 0;
     var accumulator = 0;
+    var fontScale = 1;
+    var LS_KEY = 'catRunnerHighScore';
+
+    function loadHighScore() {
+      try { highScore = parseInt(localStorage.getItem(LS_KEY), 10) || 0; }
+      catch(e) { highScore = 0; }
+    }
+
+    function saveHighScore() {
+      if (score > highScore) {
+        highScore = score;
+        try { localStorage.setItem(LS_KEY, String(highScore)); }
+        catch(e) { /* storage full, silently ignore */ }
+      }
+    }
 
     function transition() {
-      if (gameState === 'READY' && Input.consumeAnyKey()) { gameState = 'PLAYING'; ObstacleManager.reset(); Dog.reset(); }
-      if (gameState === 'GAME_OVER' && Input.consumeAnyKey()) { gameState = 'READY'; resetAll(); }
+      if (gameState === 'READY') {
+        // Update intro animation
+        if (introPhase === 'idle') {
+          // Bounce yarn ball
+          introYarnVY += GRAVITY * 0.5;
+          if (introYarnVY > 6) introYarnVY = -5;
+          introYarnX += 0.3;
+          if (introYarnX > 440) introYarnX = 420;
+          // Dog peeks in gradually
+          dogX = Math.min(dogX + 0.4, -20);
+        }
+        // Start game on key/tap
+        if (Input.consumeAnyKey()) {
+          introPhase = 'bolting';
+          introTimer = 0;
+        }
+      }
+
+      if (gameState === 'READY' && introPhase === 'bolting') {
+        introTimer += FIXED_DT;
+        // Cat bolts from center to game position over 500ms
+        introCatX = 400 - (400 - CAT_X) * Math.min(introTimer / 500, 1);
+        // Dog retreats off-screen
+        dogX = -20 - 80 * Math.min(introTimer / 500, 1);
+        if (introTimer >= 500) {
+          gameState = 'PLAYING';
+          catY = GROUND_Y; catOnGround = true; catVY = 0;
+          introPhase = 'idle';
+          introCatX = CAT_X;
+          ObstacleManager.reset();
+          Dog.reset();
+        }
+      }
+
+      if (gameState === 'GAME_OVER' && Input.consumeAnyKey()) {
+        gameState = 'READY';
+        resetAll();
+      }
     }
 
     function resetAll() {
-      gameState = 'READY'; gameSpeed = BASE_SPEED;
-      damageCount = 0; invulnTimer = 0; stumbleTimer = 0;
-      catY = GROUND_Y; catVY = 0; catOnGround = true; catDucking = false; runFrame = 0; runTimer = 0;
-      Background.reset(); ObstacleManager.reset(); Dog.reset();
+      gameState    = 'READY';
+      gameSpeed    = BASE_SPEED;
+      damageCount  = 0;
+      invulnTimer  = 0;
+      stumbleTimer = 0;
+      score        = 0;
+      introPhase   = 'idle';
+      introTimer   = 0;
+      introCatX    = 400;
+      introYarnX   = 420;
+      introYarnVY  = 0;
+      dogX         = DOG_BASE_X;
+      dogState     = 'idle';
+      catY = GROUND_Y; catVY = 0; catOnGround = true;
+      catDucking = false; runFrame = 0; runTimer = 0;
+      Background.reset();
+      ObstacleManager.reset();
+      Dog.reset();
     }
 
     function aabbCollision(a, b) {
@@ -483,13 +711,17 @@ canvas {
 
     function checkCollisions() {
       if (invulnTimer > 0) return;
+
       var catHb = Player.getHitbox();
       var activeObs = ObstacleManager.getActive();
+
       for (var i = 0; i < activeObs.length; i++) {
         var obsHb = ObstacleManager.getHitbox(activeObs[i]);
         if (!aabbCollision(catHb, obsHb)) continue;
+
         var def = OBSTACLES[activeObs[i].type];
         if (def.short && catDucking) continue;
+
         handleHit();
         ObstacleManager.recycle(activeObs[i]);
         break;
@@ -497,10 +729,24 @@ canvas {
     }
 
     function handleHit() {
-      damageCount++; invulnTimer = INVULN_MS; stumbleTimer = 3;
-      catY = GROUND_Y; catVY = 0; catOnGround = true;
+      damageCount++;
+      invulnTimer = INVULN_MS;
+      stumbleTimer = 3;
+
+      catY = GROUND_Y;
+      catVY = 0;
+      catOnGround = true;
+
       Dog.advance();
-      if (damageCount >= 3) gameState = 'GAME_OVER';
+
+      if (damageCount >= 3) {
+        gameState = 'GAME_OVER';
+        saveHighScore();
+      }
+    }
+
+    function updateFontScale() {
+      fontScale = Math.min(canvas.width / W, canvas.height / H);
     }
 
     function loop(ts) {
@@ -509,12 +755,17 @@ canvas {
       if (dt > DT_CAP) dt = DT_CAP;
       if (dt <= 0) { requestAnimationFrame(loop); return; }
 
+      updateFontScale();
+
       accumulator += dt;
       while (accumulator >= FIXED_DT) {
         transition();
         if (gameState === 'PLAYING') {
-          Input.poll(); Player.update(FIXED_DT);
-          ObstacleManager.update(FIXED_DT); Background.update(FIXED_DT);
+          Input.poll();
+          Player.update(FIXED_DT);
+          ObstacleManager.update(FIXED_DT);
+          Background.update(FIXED_DT);
+          score += gameSpeed * FIXED_DT / 10;
           if (invulnTimer > 0) { invulnTimer -= FIXED_DT; if (invulnTimer < 0) invulnTimer = 0; }
           if (stumbleTimer > 0) stumbleTimer--;
           checkCollisions();
@@ -523,60 +774,305 @@ canvas {
       }
 
       ctx.clearRect(0, 0, W, H);
-      Background.render(ctx); ObstacleManager.render(ctx);
+      Background.render(ctx);
 
-      var catAlpha = 1;
-      if (invulnTimer > 0) catAlpha = (Math.floor(invulnTimer / BLINK_MS) % 2 === 0) ? 0.4 : 1.0;
-      ctx.globalAlpha = catAlpha;
+      if (gameState === 'PLAYING' || gameState === 'GAME_OVER') {
+        ObstacleManager.render(ctx);
+      }
 
-      if (stumbleTimer > 0 && gameState === 'PLAYING') {
-        ctx.save();
-        ctx.translate(CAT_X, GROUND_Y); ctx.rotate(15 * Math.PI / 180); ctx.translate(-CAT_X, -GROUND_Y);
-        Player.render(ctx);
-        ctx.strokeStyle = '#FF0000'; ctx.lineWidth = 1.5;
-        var ey = GROUND_Y - 55;
-        ctx.beginPath();
-        ctx.moveTo(CAT_X - 3, ey - 5); ctx.lineTo(CAT_X, ey - 2);
-        ctx.moveTo(CAT_X, ey - 5); ctx.lineTo(CAT_X - 3, ey - 2);
-        ctx.moveTo(CAT_X + 11, ey - 5); ctx.lineTo(CAT_X + 14, ey - 2);
-        ctx.moveTo(CAT_X + 14, ey - 5); ctx.lineTo(CAT_X + 11, ey - 2);
-        ctx.stroke();
-        ctx.fillStyle = '#FFD700';
-        for (var s = 0; s < 3; s++) {
-          var sx = CAT_X - 20 + s * 25, sy = ey - 12 + (s % 2) * 6;
-          ctx.beginPath();
-          ctx.moveTo(sx, sy - 4); ctx.lineTo(sx + 1.6, sy - 1.6); ctx.lineTo(sx + 4, sy);
-          ctx.lineTo(sx + 1.6, sy + 1.6); ctx.lineTo(sx, sy + 4);
-          ctx.lineTo(sx - 1.6, sy + 1.6); ctx.lineTo(sx - 4, sy);
-          ctx.lineTo(sx - 1.6, sy - 1.6); ctx.closePath(); ctx.fill();
+      // Cat rendering
+      if (gameState === 'PLAYING' || gameState === 'GAME_OVER') {
+        var catAlpha = 1;
+        if (invulnTimer > 0) {
+          catAlpha = (Math.floor(invulnTimer / BLINK_MS) % 2 === 0) ? 0.4 : 1.0;
         }
-        ctx.restore();
-      } else {
-        Player.render(ctx);
+        ctx.globalAlpha = catAlpha;
+
+        if (stumbleTimer > 0 && gameState === 'PLAYING') {
+          ctx.save();
+          ctx.translate(CAT_X, GROUND_Y);
+          ctx.rotate(15 * Math.PI / 180);
+          ctx.translate(-CAT_X, -GROUND_Y);
+          Player.render(ctx);
+          // X eyes
+          ctx.strokeStyle = '#FF0000';
+          ctx.lineWidth = 1.5;
+          var ey = GROUND_Y - 55;
+          ctx.beginPath();
+          ctx.moveTo(CAT_X - 3, ey - 5); ctx.lineTo(CAT_X, ey - 2);
+          ctx.moveTo(CAT_X, ey - 5); ctx.lineTo(CAT_X - 3, ey - 2);
+          ctx.moveTo(CAT_X + 11, ey - 5); ctx.lineTo(CAT_X + 14, ey - 2);
+          ctx.moveTo(CAT_X + 14, ey - 5); ctx.lineTo(CAT_X + 11, ey - 2);
+          ctx.stroke();
+          ctx.fillStyle = '#FFD700';
+          for (var s2 = 0; s2 < 3; s2++) {
+            var sx2 = CAT_X - 20 + s2 * 25;
+            var sy2 = ey - 12 + (s2 % 2) * 6;
+            drawStar(ctx, sx2, sy2, 4);
+          }
+          ctx.restore();
+        } else {
+          Player.render(ctx);
+        }
+        ctx.globalAlpha = 1;
+
+        Dog.render(ctx);
       }
-      ctx.globalAlpha = 1;
 
-      Dog.render(ctx);
-
+      // Intro scene (READY)
       if (gameState === 'READY') {
-        ctx.fillStyle = C.text; ctx.font = '18px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('Press Space or Tap to Start', W / 2, H / 2 + 20);
+        renderIntroScene(ctx);
       }
-      if (gameState === 'GAME_OVER') {
-        ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = C.text; ctx.font = '24px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('Game Over', W / 2, H / 2 - 10);
-        ctx.font = '16px monospace'; ctx.fillText('Tap or press any key to retry', W / 2, H / 2 + 20);
-      }
+
+      // HUD and overlays
+      renderHUD(ctx);
+      renderStateOverlay(ctx);
 
       requestAnimationFrame(loop);
     }
 
+    // Intro scene: cat at center, yarn ball, dog peeking
+    function renderIntroScene(ctx) {
+      var cx = introCatX;
+      var cy = GROUND_Y;
+
+      ctx.save();
+
+      // Draw intro cat at its animated position
+      ctx.save();
+      ctx.translate(cx, cy);
+
+      // Tail
+      ctx.strokeStyle = C.catBody; ctx.lineWidth = 5; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-16, -28);
+      ctx.bezierCurveTo(-50, -50, -45, -85, -30, -75);
+      ctx.stroke();
+
+      // Body
+      ctx.fillStyle = C.catBody;
+      ctx.beginPath();
+      ctx.ellipse(0, -30, 18, 16, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = C.catBelly;
+      ctx.beginPath();
+      ctx.ellipse(2, -27, 10, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Legs
+      ctx.fillStyle = C.catLeg;
+      ctx.fillRect(-16, -24, 6, 24);
+      ctx.fillRect(-6, -26, 6, 26);
+      ctx.fillRect(2, -22, 6, 22);
+      ctx.fillRect(10, -24, 6, 24);
+
+      // Head
+      var hcy = -55;
+      ctx.fillStyle = C.catBody;
+      ctx.beginPath();
+      ctx.arc(4, hcy, 13, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Ears
+      ctx.fillStyle = C.catBody;
+      ctx.beginPath();
+      ctx.moveTo(-6, hcy - 8); ctx.lineTo(-12, hcy - 26); ctx.lineTo(2, hcy - 8); ctx.fill();
+      ctx.fillStyle = C.catInnerEar;
+      ctx.beginPath();
+      ctx.moveTo(-4, hcy - 9); ctx.lineTo(-9, hcy - 22); ctx.lineTo(0, hcy - 9); ctx.fill();
+      ctx.fillStyle = C.catBody;
+      ctx.beginPath();
+      ctx.moveTo(4, hcy - 10); ctx.lineTo(10, hcy - 28); ctx.lineTo(14, hcy - 8); ctx.fill();
+      ctx.fillStyle = C.catInnerEar;
+      ctx.beginPath();
+      ctx.moveTo(6, hcy - 10); ctx.lineTo(10, hcy - 24); ctx.lineTo(12, hcy - 9); ctx.fill();
+
+      // Eyes
+      ctx.fillStyle = C.catEye;
+      ctx.beginPath();
+      ctx.arc(-2, hcy - 4, 2.5, 0, Math.PI * 2);
+      ctx.arc(12, hcy - 4, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#FFF';
+      ctx.beginPath();
+      ctx.arc(-1, hcy - 5, 1, 0, Math.PI * 2);
+      ctx.arc(13, hcy - 5, 1, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Nose
+      ctx.fillStyle = C.catNose;
+      ctx.beginPath();
+      ctx.moveTo(4, hcy - 1); ctx.lineTo(8, hcy - 1); ctx.lineTo(6, hcy + 2); ctx.fill();
+
+      // Whiskers
+      ctx.strokeStyle = C.catEye; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-8, hcy - 1); ctx.lineTo(-22, hcy - 3);
+      ctx.moveTo(-8, hcy + 1); ctx.lineTo(-22, hcy + 1);
+      ctx.moveTo(14, hcy - 2); ctx.lineTo(28, hcy - 4);
+      ctx.moveTo(14, hcy); ctx.lineTo(28, hcy);
+      ctx.stroke();
+
+      ctx.restore(); // end cat translate
+
+      // Yarn ball (bouncing below cat)
+      var yarnX = introYarnX;
+      var yarnY = GROUND_Y - 6 + introYarnVY * 0.5; // use velocity directly for visual offset
+
+      ctx.fillStyle = '#E87080';
+      ctx.beginPath();
+      ctx.arc(yarnX, yarnY, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#D06070';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(yarnX, yarnY, 6, 0, Math.PI * 2);
+      ctx.stroke();
+      // Yarn thread
+      ctx.strokeStyle = '#E87080';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(yarnX + 3, yarnY - 3);
+      ctx.quadraticCurveTo(yarnX + 10, yarnY - 10, yarnX + 8, yarnY);
+      ctx.stroke();
+
+      // Dog peeking from left
+      if (dogX < 0 && dogX > -120) {
+        var dx2 = dogX;
+        ctx.save();
+        ctx.translate(dx2, GROUND_Y);
+
+        ctx.fillStyle = C.dogDark;
+        ctx.beginPath();
+        ctx.ellipse(0, -10, 14, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = C.dogBody;
+        ctx.beginPath();
+        ctx.arc(14, -22, 12, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = C.dogDark;
+        ctx.beginPath();
+        ctx.ellipse(6, -28, 5, 10, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#2D2D2D';
+        ctx.beginPath();
+        ctx.arc(12, -24, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#1A1A1A';
+        ctx.beginPath();
+        ctx.arc(22, -23, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      ctx.restore();
+    }
+
+    // HUD: score and high score
+    function renderHUD(ctx) {
+      if (gameState !== 'PLAYING' && gameState !== 'GAME_OVER') return;
+
+      ctx.save();
+      var fs = Math.round(16 * fontScale);
+      ctx.font = fs + 'px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = C.text;
+
+      var scoreText = 'Score: ' + Math.floor(score);
+      ctx.fillText(scoreText, W - 15, 25);
+
+      if (highScore > 0) {
+        ctx.fillStyle = 'rgba(74,55,40,0.6)';
+        ctx.font = (fs - 2) + 'px monospace';
+        ctx.fillText('Best: ' + highScore, W - 15, 45);
+      }
+
+      ctx.restore();
+    }
+
+    // State overlays and mobile hints
+    function renderStateOverlay(ctx) {
+      ctx.save();
+
+      if (gameState === 'READY') {
+        // Prompt text
+        var fs2 = Math.round(18 * fontScale);
+        ctx.font = fs2 + 'px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = C.text;
+        ctx.fillText('Press Space or Tap to Start', W / 2, H / 2 + 40);
+
+        // Mobile touch hints
+        if (isMobile) {
+          ctx.globalAlpha = 0.5;
+          ctx.font = Math.round(14 * fontScale) + 'px monospace';
+          ctx.fillText('\u2191 Jump', W / 2, H / 4);
+          ctx.fillText('\u2193 Duck', W / 2, H * 3 / 4 + 10);
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      if (gameState === 'GAME_OVER') {
+        // Dim overlay
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(0, 0, W, H);
+
+        // Game Over title
+        var fs3 = Math.round(28 * fontScale);
+        ctx.font = 'bold ' + fs3 + 'px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText('Game Over', W / 2, H / 2 - 30);
+
+        // Score
+        var fs4 = Math.round(18 * fontScale);
+        ctx.font = fs4 + 'px monospace';
+        ctx.fillStyle = '#F4C478';
+        ctx.fillText('Score: ' + Math.floor(score), W / 2, H / 2 + 5);
+
+        // High score
+        ctx.font = Math.round(14 * fontScale) + 'px monospace';
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fillText('Best: ' + highScore, W / 2, H / 2 + 30);
+
+        // Retry prompt
+        ctx.font = Math.round(16 * fontScale) + 'px monospace';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText('Tap or press any key to retry', W / 2, H / 2 + 55);
+      }
+
+      ctx.restore();
+    }
+
+    function drawStar(ctx, x, y, r) {
+      ctx.beginPath();
+      ctx.moveTo(x, y - r);
+      ctx.lineTo(x + r * 0.4, y - r * 0.4);
+      ctx.lineTo(x + r, y);
+      ctx.lineTo(x + r * 0.4, y + r * 0.4);
+      ctx.lineTo(x, y + r);
+      ctx.lineTo(x - r * 0.4, y + r * 0.4);
+      ctx.lineTo(x - r, y);
+      ctx.lineTo(x - r * 0.4, y - r * 0.4);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    loadHighScore();
+
     return { loop: loop, resetAll: resetAll };
   })();
 
+  // ÔöÇÔöÇ Boot ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+  isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
   Input.init();
   requestAnimationFrame(Game.loop);
+
 })();
 </script>
 </body>
