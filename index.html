@@ -20,6 +20,7 @@ canvas {
 </head>
 <body>
 <canvas id="game"></canvas>
+<div id="debug" style="position:fixed;top:0;left:0;color:#0f0;font:10px monospace;background:rgba(0,0,0,0.7);padding:4px 8px;z-index:999;pointer-events:none;max-height:200px;overflow:hidden;"></div>
 <script>
 (function() {
   'use strict';
@@ -931,6 +932,20 @@ canvas {
       // HUD and overlays
       renderHUD(ctx);
       renderStateOverlay(ctx);
+
+      // Debug overlay (DOM, visible in browser snapshot)
+      var dbg = document.getElementById('debug');
+      dbg.textContent = 'state:' + gameState +
+        ' | obs:' + ObstacleManager.getActive().length +
+        ' | catY:' + catY.toFixed(1) +
+        ' | duck:' + catDucking +
+        ' | onGround:' + catOnGround +
+        ' | speed:' + gameSpeed.toFixed(1) +
+        ' | dmg:' + damageCount +
+        ' | dogX:' + dogX.toFixed(0) +
+        ' | dogState:' + dogState +
+        ' | invuln:' + invulnTimer.toFixed(0) +
+        ' | score:' + Math.floor(score);
 
       requestAnimationFrame(loop);
     }
