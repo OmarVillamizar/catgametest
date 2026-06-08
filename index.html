@@ -37,6 +37,55 @@ canvas {
   var JUMP_VEL    = -12;
   var GRAVITY     = 0.6;
   var BASE_SPEED  = 3;
+  var SPEED_RAMP  = 0.08;
+  var SPEED_CAP   = 9;
+  var INVULN_MS   = 800;
+  var BLINK_MS    = 100;
+  var MAX_OBSTACLES = 3;
+  var SPAWN_MIN   = 1200;
+  var SPAWN_MAX   = 3000;
+  var MIN_GAP     = 300;
+  var DOG_BASE_X  = -100;
+  var DOG_POSITIONS = [-100, 60, 150, 240];
+
+  var OBSTACLES = [
+    { name:'vase',  w:22, h:50, short:false,
+      draw:function(ctx,x,y){ ctx.fillStyle='#C8B078'; ctx.fillRect(x+7,y-40,19,40);
+        ctx.beginPath(); ctx.ellipse(x+16,y-40,11,6,0,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#B09860'; ctx.fillRect(x+3,y-8,25,8); } },
+    { name:'lamp',  w:18, h:55, short:false,
+      draw:function(ctx,x,y){ ctx.fillStyle='#8B6F47'; ctx.fillRect(x+6,y-48,4,48);
+        ctx.beginPath(); ctx.arc(x+8,y-2,8,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#E8D8A0'; ctx.beginPath(); ctx.moveTo(x+2,y-52); ctx.lineTo(x+14,y-52);
+        ctx.lineTo(x+12,y-42); ctx.lineTo(x+4,y-42); ctx.closePath(); ctx.fill(); } },
+    { name:'chair', w:35, h:45, short:false,
+      draw:function(ctx,x,y){ ctx.fillStyle='#A07848';
+        ctx.fillRect(x+2,y-8,4,8); ctx.fillRect(x+29,y-8,4,8);
+        ctx.fillRect(x+2,y-45,35,5); ctx.fillRect(x+2,y-45,4,22);
+        ctx.fillStyle='#8B6B3E'; ctx.fillRect(x+6,y-12,23,4); } },
+    { name:'toy',   w:24, h:30, short:true,
+      draw:function(ctx,x,y){ ctx.fillStyle='#E87080';
+        ctx.beginPath(); ctx.arc(x+12,y-15,12,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle='#FFFFFF'; ctx.lineWidth=2; ctx.beginPath();
+        ctx.arc(x+12,y-15,12,-0.3,1.5); ctx.stroke();
+        ctx.fillStyle='#FFF'; ctx.beginPath(); ctx.arc(x+16,y-18,3,0,Math.PI*2); ctx.fill(); } },
+    { name:'basket',w:28, h:30, short:true,
+      draw:function(ctx,x,y){ ctx.fillStyle='#C49460';
+        ctx.beginPath(); ctx.moveTo(x+6,y-12); ctx.lineTo(x+22,y-12);
+        ctx.lineTo(x+18,y-26); ctx.lineTo(x+10,y-26); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle='#A07040'; ctx.lineWidth=1;
+        for(var i=0;i<4;i++){ ctx.beginPath(); ctx.moveTo(x+6+i*4,y-12);
+          ctx.lineTo(x+8+i*4,y-26); ctx.stroke(); } } },
+    { name:'plant', w:30, h:45, short:true,
+      draw:function(ctx,x,y){ ctx.fillStyle='#B07040';
+        ctx.fillRect(x+8,y-12,14,12);
+        ctx.fillStyle='#60A040';
+        ctx.beginPath(); ctx.ellipse(x+6,y-18,6,10,-0.3,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(x+24,y-20,7,11,0.2,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(x+15,y-30,6,12,0,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(x+15,y-22,5,8,0,0,Math.PI*2);
+        ctx.fillStyle='#80C060'; ctx.fill(); } }
+  ];
 
   var C = {
     wall:        '#F0E4D8', wallPattern: '#E8D8C8',
@@ -45,12 +94,19 @@ canvas {
     catBody:     '#E8923A', catStripe:    '#D47A2A', catBelly: '#F4C478',
     catInnerEar: '#F0B0B0', catEye:       '#2D2D2D', catNose: '#E87080',
     catLeg:      '#D48030', catHighlight: '#FFFFFF',
+    dogBody:     '#8B6F47', dogDark:      '#6B5230', dogTongue: '#FF6B6B',
     text:        '#4A3728'
   };
 
-  var gameState   = 'READY';
-  var gameSpeed   = BASE_SPEED;
-  var floorOffset = 0;
+  var gameState    = 'READY';
+  var gameSpeed    = BASE_SPEED;
+  var floorOffset  = 0;
+  var elapsedTime  = 0;
+  var damageCount  = 0;
+  var invulnTimer  = 0;
+  var dogX         = DOG_BASE_X;
+  var dogState     = 'idle';
+  var stumbleTimer = 0;
 
   var catY        = GROUND_Y;
   var catVY       = 0;
@@ -245,7 +301,122 @@ canvas {
     return { update: update, render: render, jump: jump, setDuck: setDuck, getHitbox: getHitbox, isOnGround: isOnGround, reset: reset };
   })();
 
-  var Input = (function() {
+  var ObstacleManager = (function() {
+    var spawnTimer = 0, nextSpawn = 0, lastSpawnX = W;
+    var pool = [], active = [];
+
+    function initPool() {
+      pool = [];
+      for (var i = 0; i < 6; i++) pool.push({ type: null, x: 0, active: false });
+    }
+
+    function acquire(type) {
+      for (var i = 0; i < pool.length; i++) {
+        if (!pool[i].active) {
+          pool[i].type = type; pool[i].x = W; pool[i].active = true;
+          active.push(pool[i]); lastSpawnX = W; return;
+        }
+      }
+    }
+
+    function recycle(obs) {
+      obs.active = false;
+      var idx = active.indexOf(obs);
+      if (idx !== -1) active.splice(idx, 1);
+    }
+
+    function randomType() { return Math.floor(Math.random() * OBSTACLES.length); }
+
+    function canSpawn() { return active.length < MAX_OBSTACLES && (W - lastSpawnX) >= MIN_GAP; }
+
+    function update(dt) {
+      if (gameState !== 'PLAYING') return;
+      elapsedTime += dt;
+      gameSpeed = Math.min(BASE_SPEED * (1 + SPEED_RAMP * (elapsedTime / 10000)), SPEED_CAP);
+      spawnTimer += dt;
+      if (spawnTimer >= nextSpawn) {
+        spawnTimer = 0;
+        nextSpawn = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
+        if (canSpawn()) acquire(randomType());
+      }
+      for (var i = active.length - 1; i >= 0; i--) {
+        var obs = active[i];
+        obs.x -= gameSpeed * (dt / FIXED_DT);
+        if (obs.x < -OBSTACLES[obs.type].w - 10) recycle(obs);
+      }
+    }
+
+    function render(ctx) {
+      for (var i = 0; i < active.length; i++) {
+        var obs = active[i], def = OBSTACLES[obs.type];
+        var y = def.short ? 200 : GROUND_Y;
+        def.draw(ctx, obs.x, y);
+      }
+    }
+
+    function getHitbox(obs) {
+      var def = OBSTACLES[obs.type];
+      if (def.short) return { x: obs.x, y: 200 - def.h, w: def.w, h: def.h };
+      return { x: obs.x, y: GROUND_Y - def.h, w: def.w, h: def.h };
+    }
+
+    function getActive() { return active; }
+
+    function reset() {
+      for (var i = active.length - 1; i >= 0; i--) recycle(active[i]);
+      spawnTimer = 0;
+      nextSpawn = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
+      elapsedTime = 0; gameSpeed = BASE_SPEED;
+    }
+
+    initPool();
+    return { update: update, render: render, getActive: getActive, getHitbox: getHitbox, recycle: recycle, reset: reset };
+  })();
+
+  var Dog = (function() {
+    function advance() {
+      dogX = DOG_POSITIONS[Math.min(damageCount, 3)];
+      dogState = damageCount === 0 ? 'idle' : damageCount === 1 ? 'advancing' : 'lunging';
+    }
+
+    function render(ctx) {
+      if (gameState === 'READY') return;
+      var dx = dogX, dy = GROUND_Y;
+      ctx.save(); ctx.translate(dx, dy);
+
+      ctx.fillStyle = C.dogBody;
+      ctx.beginPath(); ctx.ellipse(0, -16, 22, 16, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.dogBody;
+      ctx.beginPath(); ctx.arc(20, -28, 14, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.dogDark;
+      ctx.beginPath();
+      ctx.ellipse(10, -34, 6, 12, -0.4, 0, Math.PI * 2);
+      ctx.ellipse(28, -34, 6, 12, 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = C.dogBody;
+      ctx.fillRect(30, -32, 10, 8);
+      ctx.fillStyle = '#2D2D2D';
+      ctx.beginPath();
+      ctx.arc(16, -30, 2, 0, Math.PI * 2); ctx.arc(26, -30, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#FFF';
+      ctx.beginPath();
+      ctx.arc(15, -31, 0.8, 0, Math.PI * 2); ctx.arc(25, -31, 0.8, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1A1A1A';
+      ctx.beginPath(); ctx.arc(36, -30, 2.5, 0, Math.PI * 2); ctx.fill();
+      if (dogState === 'lunging') {
+        ctx.fillStyle = C.dogTongue;
+        ctx.beginPath(); ctx.ellipse(38, -24, 3, 6, 0.15, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = C.dogDark;
+      ctx.fillRect(-12, -4, 6, 20); ctx.fillRect(-2, -4, 6, 20);
+      ctx.fillRect(8, -4, 6, 20); ctx.fillRect(18, -4, 6, 20);
+
+      ctx.restore();
+    }
+
+    function reset() { dogX = DOG_BASE_X; dogState = 'idle'; damageCount = 0; }
+    return { advance: advance, render: render, reset: reset };
+  })();
     function isJumpKey(e)  { return e.code === 'Space' || e.code === 'ArrowUp'  || e.code === 'KeyW'; }
     function isDuckKey(e)  { return e.code === 'ArrowDown' || e.code === 'KeyS'; }
 
@@ -295,14 +466,41 @@ canvas {
     var accumulator = 0;
 
     function transition() {
-      if (gameState === 'READY' && Input.consumeAnyKey()) gameState = 'PLAYING';
+      if (gameState === 'READY' && Input.consumeAnyKey()) { gameState = 'PLAYING'; ObstacleManager.reset(); Dog.reset(); }
       if (gameState === 'GAME_OVER' && Input.consumeAnyKey()) { gameState = 'READY'; resetAll(); }
     }
 
     function resetAll() {
       gameState = 'READY'; gameSpeed = BASE_SPEED;
+      damageCount = 0; invulnTimer = 0; stumbleTimer = 0;
       catY = GROUND_Y; catVY = 0; catOnGround = true; catDucking = false; runFrame = 0; runTimer = 0;
-      Background.reset();
+      Background.reset(); ObstacleManager.reset(); Dog.reset();
+    }
+
+    function aabbCollision(a, b) {
+      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    function checkCollisions() {
+      if (invulnTimer > 0) return;
+      var catHb = Player.getHitbox();
+      var activeObs = ObstacleManager.getActive();
+      for (var i = 0; i < activeObs.length; i++) {
+        var obsHb = ObstacleManager.getHitbox(activeObs[i]);
+        if (!aabbCollision(catHb, obsHb)) continue;
+        var def = OBSTACLES[activeObs[i].type];
+        if (def.short && catDucking) continue;
+        handleHit();
+        ObstacleManager.recycle(activeObs[i]);
+        break;
+      }
+    }
+
+    function handleHit() {
+      damageCount++; invulnTimer = INVULN_MS; stumbleTimer = 3;
+      catY = GROUND_Y; catVY = 0; catOnGround = true;
+      Dog.advance();
+      if (damageCount >= 3) gameState = 'GAME_OVER';
     }
 
     function loop(ts) {
@@ -315,16 +513,50 @@ canvas {
       while (accumulator >= FIXED_DT) {
         transition();
         if (gameState === 'PLAYING') {
-          Input.poll();
-          Player.update(FIXED_DT);
-          Background.update(FIXED_DT);
+          Input.poll(); Player.update(FIXED_DT);
+          ObstacleManager.update(FIXED_DT); Background.update(FIXED_DT);
+          if (invulnTimer > 0) { invulnTimer -= FIXED_DT; if (invulnTimer < 0) invulnTimer = 0; }
+          if (stumbleTimer > 0) stumbleTimer--;
+          checkCollisions();
         }
         accumulator -= FIXED_DT;
       }
 
       ctx.clearRect(0, 0, W, H);
-      Background.render(ctx);
-      Player.render(ctx);
+      Background.render(ctx); ObstacleManager.render(ctx);
+
+      var catAlpha = 1;
+      if (invulnTimer > 0) catAlpha = (Math.floor(invulnTimer / BLINK_MS) % 2 === 0) ? 0.4 : 1.0;
+      ctx.globalAlpha = catAlpha;
+
+      if (stumbleTimer > 0 && gameState === 'PLAYING') {
+        ctx.save();
+        ctx.translate(CAT_X, GROUND_Y); ctx.rotate(15 * Math.PI / 180); ctx.translate(-CAT_X, -GROUND_Y);
+        Player.render(ctx);
+        ctx.strokeStyle = '#FF0000'; ctx.lineWidth = 1.5;
+        var ey = GROUND_Y - 55;
+        ctx.beginPath();
+        ctx.moveTo(CAT_X - 3, ey - 5); ctx.lineTo(CAT_X, ey - 2);
+        ctx.moveTo(CAT_X, ey - 5); ctx.lineTo(CAT_X - 3, ey - 2);
+        ctx.moveTo(CAT_X + 11, ey - 5); ctx.lineTo(CAT_X + 14, ey - 2);
+        ctx.moveTo(CAT_X + 14, ey - 5); ctx.lineTo(CAT_X + 11, ey - 2);
+        ctx.stroke();
+        ctx.fillStyle = '#FFD700';
+        for (var s = 0; s < 3; s++) {
+          var sx = CAT_X - 20 + s * 25, sy = ey - 12 + (s % 2) * 6;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy - 4); ctx.lineTo(sx + 1.6, sy - 1.6); ctx.lineTo(sx + 4, sy);
+          ctx.lineTo(sx + 1.6, sy + 1.6); ctx.lineTo(sx, sy + 4);
+          ctx.lineTo(sx - 1.6, sy + 1.6); ctx.lineTo(sx - 4, sy);
+          ctx.lineTo(sx - 1.6, sy - 1.6); ctx.closePath(); ctx.fill();
+        }
+        ctx.restore();
+      } else {
+        Player.render(ctx);
+      }
+      ctx.globalAlpha = 1;
+
+      Dog.render(ctx);
 
       if (gameState === 'READY') {
         ctx.fillStyle = C.text; ctx.font = '18px monospace'; ctx.textAlign = 'center';
@@ -334,8 +566,7 @@ canvas {
         ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(0, 0, W, H);
         ctx.fillStyle = C.text; ctx.font = '24px monospace'; ctx.textAlign = 'center';
         ctx.fillText('Game Over', W / 2, H / 2 - 10);
-        ctx.font = '16px monospace';
-        ctx.fillText('Tap or press any key to retry', W / 2, H / 2 + 20);
+        ctx.font = '16px monospace'; ctx.fillText('Tap or press any key to retry', W / 2, H / 2 + 20);
       }
 
       requestAnimationFrame(loop);
