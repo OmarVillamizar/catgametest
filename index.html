@@ -318,8 +318,6 @@ canvas {
           }
         }
       }
-      }
-      // ÔöÇÔöÇ Animation timer ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       if (gameState === 'PLAYING' && catOnGround && !catDucking) {
         runTimer += dt;
         while (runTimer >= RUN_MS) { runTimer -= RUN_MS; runFrame = (runFrame + 1) % 4; }
