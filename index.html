@@ -632,9 +632,9 @@ canvas {
 
       // Back legs
       ctx.fillStyle = C.dogDark;
-      ctx.fillRect(-14, -14 + legPhase, 7, 16);
-      ctx.fillRect(-4, -16 - legPhase, 7, 18);
-      logDraw('dog-leg', {x:dx-14, y:dy-14+legPhase, w:28, h:18, color:C.dogDark});
+      ctx.fillRect(-14, -16 - legPhase, 7, 16);
+      ctx.fillRect(-4, -18 + legPhase, 7, 18);
+      logDraw('dog-leg', {x:dx-14, y:dy-16-legPhase, w:28, h:18, color:C.dogDark});
 
       // Body (larger than cat: 28×20 vs cat's 18×16)
       ctx.fillStyle = C.dogBody;
@@ -650,8 +650,8 @@ canvas {
 
       // Front legs
       ctx.fillStyle = C.dogDark;
-      ctx.fillRect(6, -14 + legPhase, 7, 16);
-      ctx.fillRect(16, -16 - legPhase, 7, 18);
+      ctx.fillRect(6, -16 - legPhase, 7, 16);
+      ctx.fillRect(16, -18 + legPhase, 7, 18);
 
       // Head
       ctx.fillStyle = C.dogBody;
@@ -964,6 +964,7 @@ canvas {
         }
         accumulator -= FIXED_DT;
       }
+    }
 
     function renderFrame() {
       updateFontScale();
