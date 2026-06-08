@@ -95,7 +95,7 @@ canvas {
         gameState = 'GAME_OVER';
         deathTimer = 60;
         anyKey = false; jumpKey = false; duckKey = false;
-        if (score > highScore) { highScore = score; try { localStorage.setItem('catRunnerHighScore', String(highScore)); } catch(e) {} }
+        if (score > highScore) { highScore = Math.floor(score); try { localStorage.setItem('catRunnerHighScore', String(Math.floor(highScore))); } catch(e) {} }
       },
       reset: function() { Game.resetAll(); }
     };
@@ -227,7 +227,7 @@ canvas {
     function update(dt) {
       if (gameState !== 'PLAYING') return;
       floorOffset = (floorOffset + gameSpeed * 0.6 * dt / FIXED_DT) % SEGMENT_W;
-      windowOffset = (windowOffset + gameSpeed * 0.15 * dt / FIXED_DT) % 100;
+      windowOffset = (windowOffset + gameSpeed * 0.15 * dt / FIXED_DT) % 900;
     }
 
     function render(ctx) {
@@ -848,7 +848,7 @@ canvas {
 
     function saveHighScore() {
       if (score > highScore) {
-        highScore = score;
+        highScore = Math.floor(score);
         try { localStorage.setItem(LS_KEY, String(highScore)); }
         catch(e) { /* storage full, silently ignore */ }
       }
@@ -1284,7 +1284,7 @@ canvas {
       if (highScore > 0) {
         ctx.fillStyle = 'rgba(74,55,40,0.6)';
         ctx.font = (fs - 2) + 'px monospace';
-        ctx.fillText('Best: ' + highScore, W - 15, 45);
+        ctx.fillText('Best: ' + Math.floor(highScore), W - 15, 45);
       }
 
       ctx.restore();
@@ -1351,7 +1351,7 @@ canvas {
         // High score
         ctx.font = Math.round(14 * fontScale) + 'px monospace';
         ctx.fillStyle = 'rgba(255,255,255,0.7)';
-        ctx.fillText('Best: ' + highScore, W / 2, H / 2 + 30);
+        ctx.fillText('Best: ' + Math.floor(highScore), W / 2, H / 2 + 30);
 
         // Retry prompt
         ctx.font = Math.round(16 * fontScale) + 'px monospace';
