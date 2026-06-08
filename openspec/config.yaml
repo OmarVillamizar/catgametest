@@ -5,15 +5,15 @@ schema: spec-driven
 context: |
   Project: catgametest
   Repo: https://github.com/OmarVillamizar/catgametest
-  Status: Empty project — no source code committed yet
-  Stack: Undefined (intended game project, no build system detected)
+  Status: Active — single-file Canvas 2D endless runner game (cat-runner-game) deployed
+  Stack: HTML5 + Canvas 2D (vanilla JS, zero dependencies, no build system)
   Conventions: AGENTS.md, CLAUDE.md, GEMINI.md (engram + persona + SDD orchestrator)
-  CI: None
+  CI: None (manual verification via Puppeteer harness at debug/harness.mjs)
 
 testing:
   strict_tdd: false
-  test_runner: null
-  note: No test runner detected. Project has no source files or build config yet.
+  test_runner: puppeteer
+  note: Puppeteer harness at debug/harness.mjs — 14 assertions across spawn, parallax, pause/restart, duck rendering, dog sizing, jump hitbox, and game-over edge cases.
 
 quality:
   linter: null
