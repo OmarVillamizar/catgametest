@@ -52,6 +52,7 @@ canvas {
   function stepFrame() {
     var dt = FIXED_DT;
     Game.transition();
+    if (deathTimer > 0) deathTimer--;
     if (gameState === 'PLAYING') {
       Input.poll();
       Player.update(dt);
@@ -60,7 +61,6 @@ canvas {
       score += gameSpeed * dt / 10;
       if (invulnTimer > 0) { invulnTimer -= dt; if (invulnTimer < 0) invulnTimer = 0; }
       if (stumbleTimer > 0) stumbleTimer--;
-      if (deathTimer > 0) deathTimer--;
       Game.checkCollisions();
     }
   }
@@ -1069,6 +1069,7 @@ canvas {
       accumulator += dt;
       while (accumulator >= FIXED_DT) {
         transition();
+        if (deathTimer > 0) deathTimer--;
         if (gameState === 'PLAYING') {
           Input.poll();
           Player.update(FIXED_DT);
@@ -1077,7 +1078,6 @@ canvas {
           score += gameSpeed * FIXED_DT / 10;
           if (invulnTimer > 0) { invulnTimer -= FIXED_DT; if (invulnTimer < 0) invulnTimer = 0; }
           if (stumbleTimer > 0) stumbleTimer--;
-          if (deathTimer > 0) deathTimer--;
           checkCollisions();
         }
         accumulator -= FIXED_DT;
