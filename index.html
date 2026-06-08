@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Cat Runner</title>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+canvas {
+  display: block;
+  width: 100vw; height: 100vh;
+  object-fit: contain;
+  touch-action: none;
+  image-rendering: pixelated;
+  -webkit-user-select: none;
+  user-select: none;
+}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+(function() {
+  'use strict';
+
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+
+  var W = 800, H = 300;
+  canvas.width = W; canvas.height = H;
+
+  var GROUND_Y    = 240;
+  var FIXED_DT    = 16.667;
+  var DT_CAP      = 100;
+  var CAT_X       = 150;
+  var JUMP_VEL    = -12;
+  var GRAVITY     = 0.6;
+  var BASE_SPEED  = 3;
+
+  var C = {
+    wall:        '#F0E4D8', wallPattern: '#E8D8C8',
+    floor:       '#C4A882', floorDark:    '#B89870', floorLine: '#A88868',
+    baseboard:   '#8B7355', windowFrame:  '#D4B896', windowGlass: '#B5D8E8',
+    catBody:     '#E8923A', catStripe:    '#D47A2A', catBelly: '#F4C478',
+    catInnerEar: '#F0B0B0', catEye:       '#2D2D2D', catNose: '#E87080',
+    catLeg:      '#D48030', catHighlight: '#FFFFFF',
+    text:        '#4A3728'
+  };
+
+  var gameState   = 'READY';
+  var gameSpeed   = BASE_SPEED;
+  var floorOffset = 0;
+
+  var catY        = GROUND_Y;
+  var catVY       = 0;
+  var catOnGround = true;
+  var catDucking  = false;
+  var runFrame    = 0;
+  var runTimer    = 0;
+  var RUN_MS      = 100;
+  var LEG_OFFSETS = [0, -3, -2, -1];
+
+  var jumpKey  = false;
+  var duckKey  = false;
+  var anyKey   = false;
+  var jumpEdge = false;
+
+  var Background = (function() {
+    var SEGMENT_W = 810;
+    var PLANK_W = 135, PLANK_H = 60;
+
+    function update(dt) {
+      if (gameState !== 'PLAYING') return;
+      floorOffset = (floorOffset + gameSpeed * 0.6 * dt / FIXED_DT) % SEGMENT_W;
+    }
+
+    function render(ctx) {
+      ctx.fillStyle = C.wall;
+      ctx.fillRect(0, 0, W, 232);
+      ctx.fillStyle = C.wallPattern;
+      for (var x = 20; x < W; x += 40)
+        for (var y = 20; y < 232; y += 40)
+          ctx.fillRect(x, y, 2, 2);
+      // Window
+      var wx = 620, wy = 60, ww = 100, wh = 130;
+      ctx.fillStyle = C.windowFrame;
+      ctx.fillRect(wx, wy, ww, wh);
+      ctx.fillStyle = C.windowGlass;
+      ctx.fillRect(wx + 8, wy + 8, ww - 16, wh - 16);
+      ctx.strokeStyle = C.windowFrame; ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(wx + ww / 2, wy + 8); ctx.lineTo(wx + ww / 2, wy + wh - 8);
+      ctx.moveTo(wx + 8, wy + wh / 2); ctx.lineTo(wx + ww - 8, wy + wh / 2);
+      ctx.stroke();
+      // Baseboard
+      ctx.fillStyle = C.baseboard;
+      ctx.fillRect(0, 232, W, 8);
+      // Floor
+      for (var seg = -1; seg <= 1; seg++) {
+        var segX = seg * SEGMENT_W - floorOffset;
+        for (var i = 0; i < 6; i++) {
+          var px = segX + i * PLANK_W;
+          ctx.fillStyle = (i % 2 === 0) ? C.floor : C.floorDark;
+          ctx.fillRect(px, GROUND_Y, PLANK_W, PLANK_H);
+          ctx.strokeStyle = C.floorLine; ctx.lineWidth = 1;
+          ctx.strokeRect(px, GROUND_Y, PLANK_W, PLANK_H);
+        }
+      }
+    }
+
+    function reset() { floorOffset = 0; }
+    return { update: update, render: render, reset: reset };
+  })();
+
+  var Player = (function() {
+    function getHitbox() {
+      if (catDucking && catOnGround) return { x: CAT_X - 18, y: 204, w: 40, h: 36 };
+      return { x: CAT_X - 18, y: 180, w: 40, h: 60 };
+    }
+
+    function update(dt) {
+      if (!catOnGround) {
+        catVY += GRAVITY * (dt / FIXED_DT);
+        catY  += catVY * (dt / FIXED_DT);
+        if (catY >= GROUND_Y) { catY = GROUND_Y; catVY = 0; catOnGround = true; }
+      }
+      if (gameState === 'PLAYING' && catOnGround && !catDucking) {
+        runTimer += dt;
+        while (runTimer >= RUN_MS) { runTimer -= RUN_MS; runFrame = (runFrame + 1) % 4; }
+      }
+    }
+
+    function jump() {
+      if (!catOnGround) return;
+      catVY = JUMP_VEL; catOnGround = false; catDucking = false;
+    }
+
+    function setDuck(v) { catDucking = v && catOnGround; }
+
+    function render(ctx) {
+      ctx.save();
+      var fx = CAT_X, fy = catY;
+      var legOff = catOnGround && !catDucking ? LEG_OFFSETS[runFrame] : 0;
+
+      ctx.strokeStyle = C.catBody; ctx.lineWidth = 5; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(fx - 16, fy - 28);
+      ctx.bezierCurveTo(fx - 50, fy - 50, fx - 50, fy - 85, fx - 30, fy - 75);
+      ctx.stroke();
+
+      ctx.fillStyle = C.catLeg;
+      ctx.fillRect(fx + 2,  fy - 22 + legOff, 6, 22);
+      ctx.fillRect(fx + 10, fy - 24 - legOff, 6, 24);
+
+      ctx.fillStyle = C.catBody;
+      ctx.beginPath();
+      ctx.ellipse(fx, fy - 30, 18, 16, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = C.catBelly;
+      ctx.beginPath();
+      ctx.ellipse(fx + 2, fy - 27, 10, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = C.catLeg;
+      ctx.fillRect(fx - 16, fy - 24 + legOff, 6, 24);
+      ctx.fillRect(fx - 6,  fy - 26 - legOff, 6, 26);
+
+      var hcy = fy - 55;
+      ctx.fillStyle = C.catBody;
+      ctx.beginPath();
+      ctx.arc(fx + 4, hcy, 13, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = C.catBody;
+      ctx.beginPath();
+      ctx.moveTo(fx - 6, hcy - 8); ctx.lineTo(fx - 12, hcy - 26); ctx.lineTo(fx + 2, hcy - 8); ctx.fill();
+      ctx.fillStyle = C.catInnerEar;
+      ctx.beginPath();
+      ctx.moveTo(fx - 4, hcy - 9); ctx.lineTo(fx - 9, hcy - 22); ctx.lineTo(fx, hcy - 9); ctx.fill();
+      ctx.fillStyle = C.catBody;
+      ctx.beginPath();
+      ctx.moveTo(fx + 4, hcy - 10); ctx.lineTo(fx + 10, hcy - 28); ctx.lineTo(fx + 14, hcy - 8); ctx.fill();
+      ctx.fillStyle = C.catInnerEar;
+      ctx.beginPath();
+      ctx.moveTo(fx + 6, hcy - 10); ctx.lineTo(fx + 10, hcy - 24); ctx.lineTo(fx + 12, hcy - 9); ctx.fill();
+
+      ctx.fillStyle = C.catEye;
+      ctx.beginPath();
+      ctx.arc(fx - 2, hcy - 4, 2.5, 0, Math.PI * 2);
+      ctx.arc(fx + 12, hcy - 4, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = C.catHighlight;
+      ctx.beginPath();
+      ctx.arc(fx - 1, hcy - 5, 1, 0, Math.PI * 2);
+      ctx.arc(fx + 13, hcy - 5, 1, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = C.catNose;
+      ctx.beginPath();
+      ctx.moveTo(fx + 4, hcy - 1); ctx.lineTo(fx + 8, hcy - 1); ctx.lineTo(fx + 6, hcy + 2);
+      ctx.fill();
+
+      ctx.strokeStyle = C.catEye; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(fx - 8, hcy - 1); ctx.lineTo(fx - 22, hcy - 3);
+      ctx.moveTo(fx - 8, hcy + 1); ctx.lineTo(fx - 22, hcy + 1);
+      ctx.moveTo(fx + 14, hcy - 2); ctx.lineTo(fx + 28, hcy - 4);
+      ctx.moveTo(fx + 14, hcy); ctx.lineTo(fx + 28, hcy);
+      ctx.stroke();
+
+      if (!catOnGround) {
+        ctx.fillStyle = C.catBody;
+        ctx.beginPath();
+        ctx.arc(fx - 8, hcy - 12, 4, 0, Math.PI * 2);
+        ctx.arc(fx + 14, hcy - 12, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      if (catDucking && catOnGround) {
+        ctx.fillStyle = C.catBody;
+        ctx.beginPath();
+        ctx.ellipse(fx, fy - 22, 20, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = C.catBelly;
+        ctx.beginPath();
+        ctx.ellipse(fx + 2, fy - 20, 11, 7, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = C.catBody;
+        ctx.beginPath();
+        ctx.arc(fx + 4, fy - 38, 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = C.catEye;
+        ctx.beginPath();
+        ctx.arc(fx, fy - 40, 2, 0, Math.PI * 2);
+        ctx.arc(fx + 10, fy - 40, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    function isOnGround() { return catOnGround; }
+    function reset() { catY = GROUND_Y; catVY = 0; catOnGround = true; catDucking = false; runFrame = 0; runTimer = 0; }
+    return { update: update, render: render, jump: jump, setDuck: setDuck, getHitbox: getHitbox, isOnGround: isOnGround, reset: reset };
+  })();
+
+  var Input = (function() {
+    function isJumpKey(e)  { return e.code === 'Space' || e.code === 'ArrowUp'  || e.code === 'KeyW'; }
+    function isDuckKey(e)  { return e.code === 'ArrowDown' || e.code === 'KeyS'; }
+
+    function onKeyDown(e) {
+      if (isJumpKey(e)) { jumpKey = true; anyKey = true; e.preventDefault(); }
+      if (isDuckKey(e)) { duckKey = true; anyKey = true; e.preventDefault(); }
+      if (e.code === 'Space') e.preventDefault();
+    }
+
+    function onKeyUp(e) {
+      if (isJumpKey(e)) jumpKey = false;
+      if (isDuckKey(e)) duckKey = false;
+    }
+
+    function onTouchStart(e) {
+      e.preventDefault();
+      anyKey = true;
+      var rect = canvas.getBoundingClientRect();
+      var scaleY = H / rect.height;
+      var touchY = (e.touches[0].clientY - rect.top) * scaleY;
+      if (touchY < H / 2) jumpKey = true; else duckKey = true;
+    }
+
+    function onTouchEnd(e) { e.preventDefault(); jumpKey = false; duckKey = false; }
+
+    function poll() {
+      jumpEdge = jumpKey && !jumpEdge;
+      if (jumpEdge && gameState === 'PLAYING') Player.jump();
+      Player.setDuck(duckKey && Player.isOnGround());
+    }
+
+    function consumeAnyKey() { var v = anyKey; anyKey = false; return v; }
+
+    function init() {
+      window.addEventListener('keydown', onKeyDown);
+      window.addEventListener('keyup', onKeyUp);
+      canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+      canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+      canvas.addEventListener('touchcancel', onTouchEnd);
+    }
+
+    return { init: init, poll: poll, consumeAnyKey: consumeAnyKey };
+  })();
+
+  var Game = (function() {
+    var lastTime = 0;
+    var accumulator = 0;
+
+    function transition() {
+      if (gameState === 'READY' && Input.consumeAnyKey()) gameState = 'PLAYING';
+      if (gameState === 'GAME_OVER' && Input.consumeAnyKey()) { gameState = 'READY'; resetAll(); }
+    }
+
+    function resetAll() {
+      gameState = 'READY'; gameSpeed = BASE_SPEED;
+      catY = GROUND_Y; catVY = 0; catOnGround = true; catDucking = false; runFrame = 0; runTimer = 0;
+      Background.reset();
+    }
+
+    function loop(ts) {
+      var dt = ts - lastTime;
+      lastTime = ts;
+      if (dt > DT_CAP) dt = DT_CAP;
+      if (dt <= 0) { requestAnimationFrame(loop); return; }
+
+      accumulator += dt;
+      while (accumulator >= FIXED_DT) {
+        transition();
+        if (gameState === 'PLAYING') {
+          Input.poll();
+          Player.update(FIXED_DT);
+          Background.update(FIXED_DT);
+        }
+        accumulator -= FIXED_DT;
+      }
+
+      ctx.clearRect(0, 0, W, H);
+      Background.render(ctx);
+      Player.render(ctx);
+
+      if (gameState === 'READY') {
+        ctx.fillStyle = C.text; ctx.font = '18px monospace'; ctx.textAlign = 'center';
+        ctx.fillText('Press Space or Tap to Start', W / 2, H / 2 + 20);
+      }
+      if (gameState === 'GAME_OVER') {
+        ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = C.text; ctx.font = '24px monospace'; ctx.textAlign = 'center';
+        ctx.fillText('Game Over', W / 2, H / 2 - 10);
+        ctx.font = '16px monospace';
+        ctx.fillText('Tap or press any key to retry', W / 2, H / 2 + 20);
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    return { loop: loop, resetAll: resetAll };
+  })();
+
+  Input.init();
+  requestAnimationFrame(Game.loop);
+})();
+</script>
+</body>
+</html>
