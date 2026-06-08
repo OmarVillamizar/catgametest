@@ -112,8 +112,8 @@ canvas {
   var FIXED_DT    = 16.667;
   var DT_CAP      = 100;
   var CAT_X       = 150;
-  var JUMP_VEL    = -12;
-  var GRAVITY     = 0.6;
+  var JUMP_VEL    = -14;
+  var GRAVITY     = 0.85;
   var BASE_SPEED  = 3;
   var SPEED_RAMP  = 0.08;          // ├ù per 10s
   var SPEED_CAP   = 9;             // 3├ù base
@@ -207,6 +207,7 @@ canvas {
   var catDucking  = false;
   var runFrame    = 0;             // 0-3
   var runTimer    = 0;
+  var jumpBuffer  = 0;             // frames remaining for buffered jump
   var RUN_MS      = 100;
   var LEG_OFFSETS = [0, -3, -2, -1];
 
@@ -289,14 +290,18 @@ canvas {
   // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
   var Player = (function() {
     function getHitbox() {
+      // Friendly hitboxes: 85% of visual size for forgiving gameplay
       if (catDucking && catOnGround) {
-        return { x: CAT_X - 18, y: catY - 36, w: 40, h: 36 };
+        return { x: CAT_X - 16, y: catY - 30, w: 34, h: 30 };
       }
-      return { x: CAT_X - 18, y: catY - 60, w: 40, h: 60 };
+      return { x: CAT_X - 16, y: catY - 51, w: 34, h: 51 };
     }
 
     function update(dt) {
-      // ÔöÇÔöÇ Physics ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+      // Jump buffer countdown
+      if (jumpBuffer > 0) jumpBuffer--;
+
+      // Physics
       if (!catOnGround) {
         catVY += GRAVITY * (dt / FIXED_DT);
         catY  += catVY * (dt / FIXED_DT);
@@ -304,7 +309,15 @@ canvas {
           catY = GROUND_Y;
           catVY = 0;
           catOnGround = true;
+          // Execute buffered jump
+          if (jumpBuffer > 0) {
+            jumpBuffer = 0;
+            catVY = JUMP_VEL;
+            catOnGround = false;
+            catDucking = false;
+          }
         }
+      }
       }
       // ÔöÇÔöÇ Animation timer ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
       if (gameState === 'PLAYING' && catOnGround && !catDucking) {
@@ -314,7 +327,7 @@ canvas {
     }
 
     function jump() {
-      if (!catOnGround) return;
+      if (!catOnGround) { jumpBuffer = 6; return; } // buffer jump for near-landing
       catVY = JUMP_VEL;
       catOnGround = false;
       catDucking = false;
@@ -545,7 +558,16 @@ canvas {
     }
 
     function randomType() {
-      return Math.floor(Math.random() * OBSTACLES.length);
+      // Bias toward short obstacles at higher speeds (encourages duck mechanic)
+      var speedRatio = gameSpeed / BASE_SPEED;
+      var shortChance = speedRatio > 2.5 ? 0.7 : (speedRatio > 1.5 ? 0.6 : 0.33);
+      var roll = Math.random();
+      if (roll < shortChance) {
+        // Pick a short obstacle (indices 3,4,5)
+        return 3 + Math.floor(Math.random() * 3);
+      }
+      // Pick a tall obstacle (indices 0,1,2)
+      return Math.floor(Math.random() * 3);
     }
 
     function update(dt) {
@@ -588,10 +610,14 @@ canvas {
 
     function getHitbox(obs) {
       var def = OBSTACLES[obs.type];
+      // Friendly hitboxes: 85% of visual, centered
+      var fw = Math.round(def.w * 0.85);
+      var fh = Math.round(def.h * 0.85);
+      var fx = obs.x + Math.round((def.w - fw) / 2);
       if (def.short) {
-        return { x: obs.x, y: 200 - def.h, w: def.w, h: def.h };
+        return { x: fx, y: 200 - fh, w: fw, h: fh };
       }
-      return { x: obs.x, y: GROUND_Y - def.h, w: def.w, h: def.h };
+      return { x: fx, y: GROUND_Y - fh, w: fw, h: fh };
     }
 
     function getActive() { return active; }
@@ -900,7 +926,7 @@ canvas {
       dogX         = DOG_BASE_X;
       dogState     = 'idle';
       catY = GROUND_Y; catVY = 0; catOnGround = true;
-      catDucking = false; runFrame = 0; runTimer = 0;
+      catDucking = false; runFrame = 0; runTimer = 0; jumpBuffer = 0;
       windowOffset = 0;
       Background.reset();
       ObstacleManager.reset();

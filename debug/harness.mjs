@@ -148,7 +148,7 @@ async function main() {
   await input('jump');
   await tick(8);
   s = await snap();
-  const expectedHbY = s.catY - 60;
+  const expectedHbY = s.catY - 51; // friendly hitbox: 85% of 60 = 51
   const hbDelta = Math.abs(s.hitbox.y - expectedHbY);
   check('bug7_jump_hitbox', hbDelta < 2,
     `hitbox.y=${s.hitbox.y}, catY=${s.catY.toFixed(1)}, expected=${expectedHbY.toFixed(1)}, delta=${hbDelta.toFixed(2)}`);
